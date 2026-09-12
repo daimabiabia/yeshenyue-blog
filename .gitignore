@@ -6,3 +6,4 @@ tunnel.log
 cloudflared.exe
 .idea/
 .vscode/
+data/auth.json
