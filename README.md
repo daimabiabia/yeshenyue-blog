@@ -75,3 +75,24 @@ cloudflared.exe tunnel --url http://localhost:3000 --no-autoupdate
 - **方案 B（国内隧道 cpolar）**：访问 cpolar.cn 注册，下载客户端，免费版给随机 `*.cpolar.cn`，付费可固定；国内访问更快。
 - **方案 C（云托管）**：代码推到 GitHub，部署到 Render / Railway / Fly.io，得到固定公网地址，且无需本机常开。
 
+## 云托管部署（拿固定域名，无需本机常开）
+本地仓库已就绪（`git` 已 init 并提交）。下面两条路二选一：
+
+### 方式一：让我代你 push（需你提供 GitHub PAT）
+给我一个 **GitHub Personal Access Token**（勾选 `repo` 权限即可）。我用它：
+1. 通过 GitHub API 建公开仓库 `yeshenyue-blog`；
+2. `git push` 上去（token 仅用于本次推送，不会留存）。
+推送完成后，你只需在 https://render.com 上：New → Web Service → Connect GitHub → 选 `yeshenyue-blog` → Deploy。几分钟后得到固定地址 `https://yeshenyue-blog.onrender.com`，以后每次 `git push` 自动重新部署。
+
+### 方式二：你自己 push（几条命令）
+```bash
+cd 夜神月博客
+git branch -M main
+git remote add origin https://github.com/daimabiabia/yeshenyue-blog.git
+git push -u origin main
+```
+然后同上在 Render 连仓库部署即可。
+
+### 安全说明
+`data/auth.json`（后台密码哈希）已加入 `.gitignore`，不会进公开仓库。部署到云端后，服务端首次启动会自动生成默认密码 `yeshenyue`，请登录 `/admin` 立即修改。
+
