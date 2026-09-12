@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>后台管理 · 夜神月博客</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .admin { max-width: 920px; margin: 0 auto; padding: 30px 20px 80px; }
+    .panel { margin-bottom: 26px; }
+    .field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+    .field label { font-family:"JetBrains Mono",monospace; font-size:13px; font-weight:700; }
+    input, textarea, select { font-family:inherit; font-size:15px; padding:10px; border:3px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); }
+    [data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select { background:var(--page); }
+    textarea { min-height:180px; resize:vertical; font-family:"JetBrains Mono",monospace; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .login-box { max-width:380px; margin:12vh auto; }
+    .list-item { display:flex; justify-content:space-between; gap:10px; align-items:center; border:3px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:10px; background:#fff; }
+    [data-theme="dark"] .list-item { background:var(--page); }
+    .mini { padding:6px 12px; font-size:13px; box-shadow:3px 3px 0 var(--shadow); }
+    .del { background:var(--pink); color:#fff; }
+    .hint { font-family:"JetBrains Mono",monospace; font-size:12px; opacity:.7; }
+    .tabs { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+    .tabs button { cursor:pointer; font-family:"JetBrains Mono",monospace; font-weight:700; border:3px solid var(--line); border-radius:8px; padding:8px 14px; background:transparent; }
+    .tabs button.on { background:var(--lime); }
+    .hidden { display:none; }
+    .ok { color:#0a7d2c; font-family:"JetBrains Mono",monospace; font-size:13px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="brand"><span>⚙ 夜神月博客 · 后台</span></div>
+    <div class="row">
+      <a class="btn ghost mini" href="/" target="_blank" rel="noopener">查看前台</a>
+      <button class="btn ghost mini" id="logout">退出</button>
+      <button class="theme-toggle" id="themeBtn" aria-label="切换主题">🌙</button>
+    </div>
+  </nav>
+
+  <!-- 登录 -->
+  <div class="admin" id="loginView">
+    <div class="card login-box">
+      <h2 style="margin-top:0">管理员登录</h2>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" id="passInput" placeholder="默认 yeshenyue" />
+      </div>
+      <button class="btn" id="loginBtn" style="width:100%">登 录</button>
+      <p class="hint" id="loginMsg"></p>
+    </div>
+  </div>
+
+  <!-- 管理主区 -->
+  <div class="admin hidden" id="dashView">
+    <div class="tabs">
+      <button data-tab="posts" class="on">文章管理</button>
+      <button data-tab="site">站点设置</button>
+      <button data-tab="pwd">修改密码</button>
+    </div>
+    <p class="ok" id="saveMsg"></p>
+
+    <!-- 文章 -->
+    <div class="panel" id="tab-posts">
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn" id="newPost">+ 写新文章</button>
+        <span class="hint">共 <span id="postCount">0</span> 篇</span>
+      </div>
+      <div id="postList"></div>
+
+      <div class="card hidden" id="postForm" style="margin-top:18px">
+        <h3 style="margin-top:0">文章编辑</h3>
+        <div class="field"><label>标题 *</label><input id="f_title" /></div>
+        <div class="row">
+          <div class="field" style="flex:1"><label>栏目</label><select id="f_cat"></select></div>
+          <div class="field"><label>日期</label><input id="f_date" type="date" /></div>
+          <div class="field"><label>精选</label><input id="f_feat" type="checkbox" style="width:auto;height:24px" /></div>
+        </div>
+        <div class="field"><label>slug（URL 标识，可留空自动生成）</label><input id="f_slug" placeholder="my-post" /></div>
+        <div class="field"><label>标签（逗号分隔）</label><input id="f_tags" placeholder="ESP32, MQTT" /></div>
+        <div class="field"><label>摘要</label><textarea id="f_excerpt" style="min-height:70px"></textarea></div>
+        <div class="field">
+          <label>配图（可选，单张 ≤ 4MB，自动插入正文末尾）</label>
+          <div class="row">
+            <input type="file" id="f_img" accept="image/*" style="flex:1" />
+            <button class="btn mini" id="uploadImg" type="button">上传并插入</button>
+          </div>
+        </div>
+        <div class="field"><label>正文（支持 Markdown）</label><textarea id="f_content"></textarea></div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="savePost">保存文章</button>
+          <button class="btn ghost" id="cancelPost">取消</button>
+        </div>
+        <input type="hidden" id="f_id" />
+      </div>
+    </div>
+
+    <!-- 站点 -->
+    <div class="panel hidden" id="tab-site">
+      <div class="field"><label>站点标题</label><input id="s_title" /></div>
+      <div class="field"><label>Slogan（标语）</label><input id="s_slogan" /></div>
+      <div class="field"><label>关于我</label><textarea id="s_about" style="min-height:120px"></textarea></div>
+      <div class="field"><label>技术栈（逗号分隔）</label><input id="s_tech" /></div>
+      <div class="field"><label>标签池（逗号分隔）</label><textarea id="s_tags" style="min-height:70px"></textarea></div>
+      <div class="field"><label>联系方式 · 邮箱</label><input id="s_email" /></div>
+      <div class="field"><label>联系方式 · GitHub</label><input id="s_github" /></div>
+      <div class="field"><label>开源项目（每行一个：名称|URL|描述）</label><textarea id="s_projects" style="min-height:90px"></textarea></div>
+      <div class="field"><label>友链（每行一个：名称|URL|描述）</label><textarea id="s_links" style="min-height:70px"></textarea></div>
+      <h3>栏目管理</h3>
+      <div id="catList"></div>
+      <div class="card" style="margin-top:10px">
+        <div class="row">
+          <input id="c_name" placeholder="栏目名" style="flex:1" />
+          <select id="c_icon">
+            <option value="chip">chip</option><option value="wave">wave</option>
+            <option value="cloud">cloud</option><option value="bug">bug</option>
+            <option value="solder">solder</option>
+          </select>
+          <input id="c_desc" placeholder="描述" style="flex:2" />
+          <button class="btn mini" id="addCat">+ 加栏目</button>
+        </div>
+      </div>
+      <button class="btn" id="saveSite" style="margin-top:16px">保存站点设置</button>
+    </div>
+
+    <!-- 密码 -->
+    <div class="panel hidden" id="tab-pwd">
+      <div class="field"><label>当前密码</label><input type="password" id="p_cur" /></div>
+      <div class="field"><label>新密码</label><input type="password" id="p_new" /></div>
+      <div class="field"><label>确认新密码</label><input type="password" id="p_new2" /></div>
+      <button class="btn" id="savePwd">修改密码</button>
+    </div>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

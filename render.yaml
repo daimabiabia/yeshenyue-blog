@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: yeshenyue-blog
+    env: node
+    branch: main
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    envVars:
+      - key: NODE_ENV
+        value: production

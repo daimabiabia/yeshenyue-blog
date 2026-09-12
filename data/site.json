@@ -1,0 +1,195 @@
+{
+  "site": {
+    "title": "夜神月 · 物联网技术博客",
+    "slogan": "在比特与电流之间，构建可靠而优雅的万物互联",
+    "about": "资深物联网工程师，8 年嵌入式开发、边缘计算与云平台对接经验。长期奋战在 ESP32、STM32、MQTT、LoRa 与 AWS IoT 一线，擅长把不稳定的现场网络收敛成可观测、可运维的系统。信奉一句话：部署即稳定，上线即可观测。",
+    "techStack": [
+      "ESP32",
+      "STM32",
+      "MQTT",
+      "LoRa",
+      "AWS IoT",
+      "边缘计算",
+      "RTOS",
+      "网关"
+    ],
+    "stats": [
+      {
+        "num": "8",
+        "label": "年经验"
+      },
+      {
+        "num": "200+",
+        "label": "部署节点"
+      },
+      {
+        "num": "18μA",
+        "label": "最低功耗"
+      }
+    ],
+    "categories": [
+      {
+        "id": "embedded",
+        "name": "嵌入式实战",
+        "icon": "chip",
+        "desc": "ESP32 / STM32 外设驱动、低功耗与 RTOS 落地"
+      },
+      {
+        "id": "protocol",
+        "name": "协议解析",
+        "icon": "wave",
+        "desc": "MQTT / LoRaWAN / 私有二进制协议逆向与调优"
+      },
+      {
+        "id": "cloudedge",
+        "name": "云边协同",
+        "icon": "cloud",
+        "desc": "AWS IoT / 边缘网关 / 数据上云与下发"
+      },
+      {
+        "id": "pit",
+        "name": "踩坑记录",
+        "icon": "bug",
+        "desc": "现场翻车与排障实录，少走弯路"
+      },
+      {
+        "id": "hardware",
+        "name": "硬件随笔",
+        "icon": "solder",
+        "desc": "选型、布线、EMC 与量产那些事"
+      }
+    ],
+    "tags": [
+      "ESP32",
+      "STM32",
+      "MQTT",
+      "LoRa",
+      "LoRaWAN",
+      "AWS IoT",
+      "边缘计算",
+      "低功耗",
+      "RTOS",
+      "网关",
+      "OTA",
+      "传感器",
+      "EMC",
+      "MQTT-SN",
+      "FreeRTOS",
+      "数据上云"
+    ],
+    "contact": {
+      "email": "hi@yeshenyue.dev",
+      "github": "https://github.com/yeshenyue",
+      "projects": [
+        {
+          "name": "esp-mqtt-framework",
+          "url": "https://github.com/yeshenyue/esp-mqtt-framework",
+          "desc": "轻量 ESP32 MQTT 设备框架"
+        },
+        {
+          "name": "lora-gateway-kit",
+          "url": "https://github.com/yeshenyue/lora-gateway-kit",
+          "desc": "LoRaWAN 边缘网关套件"
+        },
+        {
+          "name": "iot-shadow-sync",
+          "url": "https://github.com/yeshenyue/iot-shadow-sync",
+          "desc": "弱网下设备影子状态同步库"
+        }
+      ]
+    },
+    "friendLinks": []
+  },
+  "posts": [
+    {
+      "id": "p1",
+      "title": "ESP32 深度睡眠下的 MQTT 长连接保活",
+      "slug": "esp32-deepsleep-mqtt",
+      "category": "embedded",
+      "tags": [
+        "ESP32",
+        "MQTT",
+        "低功耗"
+      ],
+      "featured": true,
+      "date": "2026-08-20",
+      "excerpt": "把平均电流压到 18μA 的同时，还能在唤醒后秒级重连并补齐离线消息。",
+      "content": "# 背景\n\nESP32 在电池场景下最怕「为了保活而睡不深」。本文给出一套定时器唤醒 + MQTT 会话保持的组合拳。\n\n## 关键参数\n\n- 深睡电流：**18μA**\n- 唤醒到重连：**< 800ms**\n- 离线消息：用 `Clean Session=0` + 持久订阅补齐\n\n## 代码片段\n\n```c\nesp_sleep_enable_timer_wakeup(60 * 1000 * 1000);\nesp_deep_sleep_start();\n```\n\n## 结论\n\n会话级保活比「心跳兜底」更省电，也更稳。"
+    },
+    {
+      "id": "p2",
+      "title": "LoRaWAN 组网踩坑：为什么你的节点总掉线",
+      "slug": "lorawan-drop",
+      "category": "protocol",
+      "tags": [
+        "LoRa",
+        "LoRaWAN",
+        "网关"
+      ],
+      "featured": true,
+      "date": "2026-07-12",
+      "excerpt": "ADR 速率塌方、占空比超限、信道掩码错配——三个最常见的掉线真因。",
+      "content": "# 现象\n\n节点前三天好好的，之后批量掉线。\n\n## 真因三连\n\n1. **ADR 速率塌方**：NR 上行过密触发速率降级\n2. **占空比超限**：Class A 被网关节流\n3. **信道掩码错配**：与 NS 默认不一致\n\n## 排障清单\n\n- 抓上行帧看 `FPort` 与 `ADR` 位\n- 核对 `ChannelMask`\n- 限制上行周期到 1%/小时\n\n> 掉线不是信号差，八成是配置错。"
+    },
+    {
+      "id": "p3",
+      "title": "AWS IoT 弱网下的设备影子状态一致性",
+      "slug": "aws-iot-shadow",
+      "category": "cloudedge",
+      "tags": [
+        "AWS IoT",
+        "边缘计算",
+        "数据上云"
+      ],
+      "featured": true,
+      "date": "2026-06-30",
+      "excerpt": "断网重连后，如何避免「云端命令」被旧状态覆盖这一经典竞态。",
+      "content": "# 问题\n\n设备离线期间云端下了控制指令，重连后本地状态把指令覆盖掉了。\n\n## 解法\n\n- 以 **shadow `desired`** 为准，本地只更新 `reported`\n- 用 `clientToken` 做请求/响应配对\n- 重连先拉 `GetThingShadow` 再决定动作\n\n## 时序\n\n```\n离线 -> 云端写 desired\n重连 -> 取 shadow -> 比对 -> 执行 desired -> 回写 reported\n```"
+    },
+    {
+      "id": "p4",
+      "title": "FreeRTOS 任务栈溢出的一次离奇死机",
+      "slug": "freertos-stack",
+      "category": "pit",
+      "tags": [
+        "RTOS",
+        "FreeRTOS",
+        "STM32"
+      ],
+      "featured": false,
+      "date": "2026-05-18",
+      "excerpt": "看门狗随机复位，最后发现是 printf 把栈吃光了。",
+      "content": "# 症状\n\n设备在跑某条日志后随机硬复位。\n\n## 根因\n\n`printf` 浮点格式化在中断上下文里吃掉了 1.2KB 栈，超出分配。\n\n## 修复\n\n- 给日志任务单独开大栈\n- 中断里只置标志，延后到任务里打印\n\n> 栈溢出不会立刻死，但一定会死。"
+    },
+    {
+      "id": "p5",
+      "title": "ESP32 + MQTT-SN 在 CoAP 网关前的轻量接入",
+      "slug": "mqtt-sn-esp32",
+      "category": "embedded",
+      "tags": [
+        "ESP32",
+        "MQTT-SN",
+        "网关"
+      ],
+      "featured": false,
+      "date": "2026-04-09",
+      "excerpt": "没有 TCP 栈的传感节点，如何用 MQTT-SN 直接对接网关。",
+      "content": "# 为什么 MQTT-SN\n\n极小的传感节点跑不起 TCP，MQTT-SN 跑在 UDP 上，报文更省。\n\n## 对接要点\n\n- 网关做 `TopicId` 注册缓存\n- `Will` 消息走网关代理\n- 心跳间隔按电池容量倒推"
+    },
+    {
+      "id": "p6",
+      "title": "硬件随笔：量产前必做的 EMC 三件事",
+      "slug": "emc-prep",
+      "category": "hardware",
+      "tags": [
+        "EMC",
+        "传感器",
+        "STM32"
+      ],
+      "featured": false,
+      "date": "2026-03-02",
+      "excerpt": "电源滤波、地平面、接口防护——量产前不改，售后必爆。",
+      "content": "# 三件事\n\n1. **电源**：π 型滤波 + 磁珠\n2. **地**：模拟/数字单点接，别画成网格\n3. **接口**：TVS 管贴端口，别贴芯片\n\n> EMC 是设计出来的，不是测出来的。"
+    }
+  ]
+}

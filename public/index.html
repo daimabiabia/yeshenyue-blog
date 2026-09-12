@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>夜神月 · 物联网技术博客</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- 导航 -->
+  <nav class="nav">
+    <div class="brand" id="brand"></div>
+    <div class="links" id="navLinks"></div>
+    <button class="theme-toggle" id="themeBtn" aria-label="切换深浅主题">🌙</button>
+  </nav>
+
+  <main id="app">
+    <!-- HERO -->
+    <header class="hero wrap">
+      <span class="badge mono">// IoT ENGINEER</span>
+      <h1>夜神月的技术博客</h1>
+      <p class="slogan" id="slogan"></p>
+      <div class="tech" id="tech"></div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <!-- 关于 -->
+    <section class="sec wrap" id="about">
+      <div class="sec-head"><span class="kicker">ABOUT</span><h2>关于我</h2></div>
+      <div class="card bg-purple about reveal"><p id="aboutText"></p></div>
+    </section>
+
+    <!-- 栏目 -->
+    <section class="sec wrap" id="cats-sec">
+      <div class="sec-head"><span class="kicker">COLUMNS</span><h2>博客栏目</h2></div>
+      <div class="grid cols-3" id="cats"></div>
+    </section>
+
+    <!-- 文章 -->
+    <section class="sec wrap" id="posts-sec">
+      <div class="sec-head"><span class="kicker">POSTS</span><h2 id="postTitle">精选文章</h2>
+        <input id="searchInput" placeholder="🔍 搜索文章…" aria-label="搜索文章" style="margin-left:auto;max-width:220px;padding:8px 12px" />
+      </div>
+      <div class="posts" id="posts"></div>
+    </section>
+
+    <!-- 友链 -->
+    <section class="sec wrap" id="links-sec">
+      <div class="sec-head"><span class="kicker">LINKS</span><h2>友链</h2></div>
+      <div class="grid cols-3" id="links"></div>
+    </section>
+
+    <!-- 标签云 -->
+    <section class="sec wrap" id="tags-sec">
+      <div class="sec-head"><span class="kicker">TAGS</span><h2>标签云</h2></div>
+      <div class="card tagcloud" id="tagcloud"></div>
+    </section>
+
+    <!-- 联系 CTA -->
+    <section class="sec wrap" id="contact">
+      <div class="cta">
+        <h2>一起把设备连上云</h2>
+        <p class="mono">有合作 / 提问 / 吐槽，欢迎来信</p>
+        <div class="links">
+          <a class="btn" id="ctaEmail" href="#">EMAIL</a>
+          <a class="btn alt" id="ctaGithub" href="#" target="_blank" rel="noopener">GITHUB</a>
+        </div>
+        <div class="links" id="projList" style="margin-top:14px"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <div>© <span id="year"></span> 夜神月 · 物联网技术博客</div>
+      <div class="mono">
+        <a id="footEmail" href="#">email</a> ·
+        <a id="footGithub" href="#" target="_blank" rel="noopener">github</a> ·
+        <a href="/admin">后台管理</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script src="/js/markdown.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
