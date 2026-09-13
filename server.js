@@ -36,10 +36,10 @@ const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex'
 
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, {
+  res.writeHead(code, Object.assign({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-  });
+  }, SEC_HEADERS));
   res.end(body);
 }
 
@@ -74,18 +74,30 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+/* 安全响应头：全站统一附加。
+ *  - CSP：脚本只允许本站（前台/后台均无内联脚本），样式放行内联（模板与后台页大量使用 style 属性/标签）；
+ *    图片放行 https 外链（Markdown 文章可贴外链图）。
+ *  - frame-ancestors 'none' + X-Frame-Options：禁止被 iframe 嵌套，防点击劫持。
+ */
+const SEC_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+};
+
 function sendFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
   fs.readFile(filePath, (err, buf) => {
     if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
       res.end('Not Found');
       return;
     }
-    res.writeHead(200, {
+    res.writeHead(200, Object.assign({
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
-    });
+    }, SEC_HEADERS));
     res.end(buf);
   });
 }
@@ -110,9 +122,28 @@ function slugify(s) {
     .slice(0, 60) || uid();
 }
 
+/* 图片魔数白名单：上传文件必须匹配真实图片格式签名，扩展名由检测结果决定，
+ * 杜绝把脚本/HTML 伪装成图片上传后被同源引用执行的风险。 */
+const IMG_MAGIC = [
+  { ext: '.png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }, // PNG 签名
+  { ext: '.jpg', bytes: [0xff, 0xd8, 0xff] },                               // JPEG SOI
+  { ext: '.gif', bytes: [0x47, 0x49, 0x46, 0x38] },                         // GIF8
+  { ext: '.webp', bytes: [0x52, 0x49, 0x46, 0x46] },                        // RIFF....WEBP
+];
+function detectImageExt(buf) {
+  if (!buf || buf.length < 12) return null;
+  for (const t of IMG_MAGIC) {
+    if (!t.bytes.every((b, i) => buf[i] === b)) continue;
+    if (t.ext === '.webp' && buf.slice(8, 12).toString('latin1') !== 'WEBP') continue;
+    return t.ext;
+  }
+  return null;
+}
+
 /* ============ 认证 ============ */
 let auth = loadAuth();
-const sessions = new Set(); // 内存会话，重启后需重新登录
+const SESSION_TTL = 24 * 60 * 60 * 1000; // 会话 24 小时过期
+const sessions = new Map(); // token -> 过期时间戳（内存会话，重启后需重新登录）
 
 function loadAuth() {
   if (!fs.existsSync(AUTH_FILE)) {
@@ -128,7 +159,36 @@ function saveAuth() { fs.writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2))
 function verifyPassword(pass) { return sha256(String(pass) + auth.salt) === auth.hash; }
 function checkToken(req) {
   const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
-  return m && sessions.has(m[1]);
+  if (!m) return false;
+  const exp = sessions.get(m[1]);
+  if (!exp) return false;
+  if (Date.now() > exp) { sessions.delete(m[1]); return false; } // 过期即吊销
+  return true;
+}
+function pruneSessions() {
+  const now = Date.now();
+  for (const [t, exp] of sessions) if (now > exp) sessions.delete(t);
+}
+
+/* 登录限速：同一 IP 连续失败 5 次锁定 15 分钟（内存态，重启即清零） */
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const loginFails = new Map(); // ip -> { count, lockedUntil }
+
+function loginLockedMinutes(ip) {
+  const rec = loginFails.get(ip);
+  if (!rec) return null;
+  if (rec.lockedUntil && Date.now() < rec.lockedUntil) {
+    return Math.max(1, Math.ceil((rec.lockedUntil - Date.now()) / 60000));
+  }
+  if (rec.lockedUntil) loginFails.delete(ip); // 锁定期已过，重新计数
+  return null;
+}
+function recordLoginFail(ip) {
+  const rec = loginFails.get(ip) || { count: 0, lockedUntil: 0 };
+  rec.count += 1;
+  if (rec.count >= LOGIN_MAX_FAILS) { rec.lockedUntil = Date.now() + LOGIN_LOCK_MS; rec.count = 0; }
+  loginFails.set(ip, rec);
 }
 
 /* ============ 站点数据 ============ */
@@ -206,8 +266,11 @@ function sanitizePost(input, isNew) {
 /* ============ 路由 ============ */
 const server = http.createServer(async (req, res) => {
   let url;
-  try { url = new URL(req.url, 'http://localhost'); } catch (e) { res.writeHead(400); return res.end('Bad Request'); }
-  const pathname = decodeURIComponent(url.pathname);
+  try { url = new URL(req.url, 'http://localhost'); }
+  catch (e) { res.writeHead(400, SEC_HEADERS); return res.end('Bad Request'); }
+  let pathname;
+  try { pathname = decodeURIComponent(url.pathname); } // 非法百分号编码（如 %ZZ）会抛 URIError
+  catch (e) { res.writeHead(400, SEC_HEADERS); return res.end('Bad Request'); }
   const method = req.method.toUpperCase();
 
   try {
@@ -227,12 +290,20 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, site);
     }
 
-    /* ---- 登录 ---- */
+    /* ---- 登录（带限速：连续失败 5 次锁 15 分钟） ---- */
     if (method === 'POST' && pathname === '/api/login') {
+      const ip = req.socket.remoteAddress || 'unknown';
+      const lockedMin = loginLockedMinutes(ip);
+      if (lockedMin !== null) return sendJSON(res, 429, { error: `失败次数过多，请约 ${lockedMin} 分钟后再试` });
       const b = await readBody(req);
-      if (!verifyPassword(b.password)) return sendJSON(res, 401, { error: '密码错误' });
+      if (!verifyPassword(b.password)) {
+        recordLoginFail(ip);
+        return sendJSON(res, 401, { error: '密码错误' });
+      }
+      loginFails.delete(ip);
       const token = crypto.randomBytes(18).toString('hex');
-      sessions.add(token);
+      pruneSessions();
+      sessions.set(token, Date.now() + SESSION_TTL);
       return sendJSON(res, 200, { token });
     }
 
@@ -269,15 +340,20 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 200, { ok: true });
       }
 
-      // 图片上传
+      // 图片上传（魔数校验：仅 PNG/JPEG/GIF/WebP，扩展名与真实内容强制一致）
       if (method === 'POST' && pathname === '/api/admin/upload') {
         const b = await readBody(req);
-        const raw = String(b.data || '');
-        const buf = Buffer.from(raw, 'base64');
+        const buf = Buffer.from(String(b.data || ''), 'base64');
+        if (!buf.length) return sendJSON(res, 400, { error: '缺少文件内容' });
         if (buf.length > MAX_UPLOAD) return sendJSON(res, 413, { error: '图片过大（上限 4MB）' });
-        const origin = String(b.filename || 'upload.png');
-        const safeName = origin.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-50);
-        const fname = Date.now().toString(36) + '_' + safeName;
+        const realExt = detectImageExt(buf);
+        if (!realExt) return sendJSON(res, 415, { error: '仅支持 PNG / JPEG / GIF / WebP 图片' });
+        const base = String(b.filename || 'img')
+          .replace(/[^a-zA-Z0-9._-]/g, '_')
+          .replace(/\.[^.]*$/, '') // 去掉原始扩展名，统一改用魔数判定出的扩展名
+          .replace(/^_+|_+$/g, '')
+          .slice(-40) || 'img';
+        const fname = Date.now().toString(36) + '_' + base + realExt;
         fs.writeFileSync(path.join(UPLOAD_DIR, fname), buf);
         return sendJSON(res, 200, { ok: true, url: '/uploads/' + fname });
       }
@@ -287,7 +363,10 @@ const server = http.createServer(async (req, res) => {
         const b = await readBody(req);
         if (!verifyPassword(b.current)) return sendJSON(res, 401, { error: '当前密码错误' });
         if (!b.next || String(b.next).length < 4) return sendJSON(res, 400, { error: '新密码至少 4 位' });
-        auth = { salt: crypto.randomBytes(8).toString('hex'), hash: sha256(b.next + auth.salt) };
+        // 注意：必须先用局部变量生成新盐，再连同新盐一起算哈希；
+        // 若写成对象字面量内引用 auth.salt，会取到旧盐导致「改密后永远登录失败」。
+        const newSalt = crypto.randomBytes(8).toString('hex');
+        auth = { salt: newSalt, hash: sha256(String(b.next) + newSalt) };
         saveAuth();
         return sendJSON(res, 200, { ok: true });
       }
@@ -335,7 +414,7 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 404, { error: 'Not Found' });
     }
 
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.writeHead(404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
     res.end('Not Found');
   } catch (e) {
     sendJSON(res, 500, { error: String((e && e.message) || e) });

@@ -208,6 +208,7 @@
       window.Motion.progressIn();   /* 先标记进度卡，再让 reveal 跳过它 */
       window.Motion.roadmapIn();
       window.Motion.reveal(document);
+      window.Motion.secFx();        /* hero 视差 / sec-head 进场 / stats 计数 / CTA·标签云微旋转 */
       window.Motion.swapIn($('#home'));
     } else {
       observeReveal();
@@ -371,6 +372,8 @@
   /* ---- 初始化 ---- */
   async function init() {
     loadTheme();
+    const y = document.getElementById('year'); /* 页脚年份（原内联脚本迁入此处，配合 CSP script-src 'self'） */
+    if (y) y.textContent = String(new Date().getFullYear());
     $('#themeBtn').addEventListener('click', toggleTheme);
     try {
       let r = await fetch('/api/site').catch(() => null);

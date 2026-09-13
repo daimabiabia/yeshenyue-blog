@@ -1,6 +1,6 @@
 /* 夜神月博客 · GSAP 动效模块
  * 依赖：/js/vendor/gsap.min.js + /js/vendor/ScrollTrigger.min.js（需在本文件之前加载）
- * API：window.Motion = { ready, heroIn, reveal, readerIn, progressIn, swapIn, killAll, tilt, pop }
+ * API：window.Motion = { ready, heroIn, reveal, readerIn, progressIn, swapIn, killAll, tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight, secFx }
  * 设计：Neo-Brutalism —— back.out 回弹、微倾斜、错峰；全部走 transform/opacity 合成层；
  *      prefers-reduced-motion 全降级；路由切换时清理 ScrollTrigger 防泄漏。
  */
@@ -106,6 +106,17 @@
         onEnter: (batch) => gsap.to(batch, { autoAlpha: 1, y: 0, stagger: 0.05, duration: 0.45, overwrite: true })
       });
     }
+    /* 正文图片滚动视差：轻微上下漂移（y 与块的 y 是不同属性，可叠加；懒加载图 onLoad 后重算触发器） */
+    const imgs = art.querySelectorAll('.md img');
+    if (imgs.length) {
+      gsap.fromTo(imgs, { yPercent: 5 }, {
+        yPercent: -5, ease: 'none',
+        scrollTrigger: { trigger: art.querySelector('.md'), start: 'top bottom', end: 'bottom top', scrub: 0.6 }
+      });
+      imgs.forEach((img) => {
+        if (!img.complete) img.addEventListener('load', () => ST.refresh(), { once: true });
+      });
+    }
   }
 
   /* ---- 登神进度条：卡片弹入 + 进度 scaleX 填充 + 百分比数字滚动 ---- */
@@ -139,6 +150,7 @@
   function killAll() {
     if (ST) ST.getAll().forEach((t) => t.kill());
     document.querySelectorAll('[data-motioned]').forEach((el) => el.removeAttribute('data-motioned'));
+    document.querySelectorAll('[data-sefx]').forEach((el) => el.removeAttribute('data-sefx'));
   }
 
   /* ---- 桌面 hover 3D 倾斜（quickTo 复用单个补间，性能友好） ---- */
@@ -232,10 +244,85 @@
     if (first) first.classList.add('active');
   }
 
+  /* ---- 首页区块动效：hero 滚动视差 / sec-head 相向进场 / stats 数字滚动 / CTA·标签云微旋转 ----
+   * 安全设计：视差只动容器 yPercent，与 heroIn 的子元素入场（char yPercent / tag scale）分属不同元素或属性，无 overwrite 冲突；
+   * 每个目标打 data-sefx 标记防重复创建，killAll 统一复位。
+   */
+  function secFx() {
+    if (REDUCE || !ST) return;
+
+    /* hero 滚动视差：badge / h1 / slogan / tech 以不同速度上移（scrub，只动容器 yPercent） */
+    const hero = document.querySelector('.hero');
+    if (hero && !hero.dataset.sefx) {
+      hero.dataset.sefx = '1';
+      [['.badge', -14], ['h1', -30], ['.slogan', -10], ['.tech', -22]].forEach(([sel, speed]) => {
+        const el = hero.querySelector(sel);
+        if (!el) return;
+        gsap.to(el, {
+          yPercent: speed, ease: 'none',
+          scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: 0.5 }
+        });
+      });
+    }
+
+    /* 区块标题相向进场：kicker 从右滑入、h2 从左滑入（once，一次性） */
+    document.querySelectorAll('.sec-head:not([data-sefx])').forEach((head) => {
+      head.setAttribute('data-sefx', '1');
+      const kicker = head.querySelector('.kicker');
+      const h2 = head.querySelector('h2');
+      if (kicker) gsap.from(kicker, {
+        autoAlpha: 0, x: 40, duration: 0.5, ease: 'back.out(1.6)',
+        scrollTrigger: { trigger: head, start: 'top 86%', once: true }
+      });
+      if (h2) gsap.from(h2, {
+        autoAlpha: 0, x: -40, duration: 0.55, ease: 'back.out(1.6)',
+        scrollTrigger: { trigger: head, start: 'top 86%', once: true }
+      });
+    });
+
+    /* stats 数字滚动：仅纯数字项从 0 计到目标（'Lv.1'/'0→1'/'∞' 等自动跳过） */
+    document.querySelectorAll('#stats .num').forEach((el) => {
+      if (el.dataset.sefx) return;
+      el.dataset.sefx = '1';
+      const txt = el.textContent.trim();
+      if (!/^\d+$/.test(txt)) return;
+      const target = parseInt(txt, 10);
+      const o = { v: 0 };
+      ST.create({
+        trigger: el, start: 'top 88%', once: true,
+        onEnter: () => gsap.to(o, {
+          v: target, duration: 1.2, ease: 'power2.out',
+          onUpdate: () => { el.textContent = String(Math.round(o.v)); },
+          onComplete: () => { el.textContent = txt; }
+        })
+      });
+    });
+
+    /* CTA 卡片滚动微旋转（scrub fromTo，确定性起止角度） */
+    const cta = document.querySelector('.cta');
+    if (cta && !cta.dataset.sefx) {
+      cta.dataset.sefx = '1';
+      gsap.fromTo(cta, { rotation: -0.8 }, {
+        rotation: 0.8, ease: 'none',
+        scrollTrigger: { trigger: cta, start: 'top bottom', end: 'bottom top', scrub: 0.8 }
+      });
+    }
+
+    /* 标签云容器微旋转 + 轻微上漂（内部 <a> 的进场由 reveal() 负责，容器/子元素互不干扰） */
+    const cloud = document.querySelector('#tagcloud');
+    if (cloud && !cloud.dataset.sefx) {
+      cloud.dataset.sefx = '1';
+      gsap.fromTo(cloud, { rotation: -0.6, yPercent: 2 }, {
+        rotation: 0.6, yPercent: -2, ease: 'none',
+        scrollTrigger: { trigger: cloud, start: 'top bottom', end: 'bottom top', scrub: 0.9 }
+      });
+    }
+  }
+
   /* ---- 字体加载后重算触发位置 ---- */
   if (ST && document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => ST.refresh()).catch(() => {});
   }
 
-  window.Motion = { ready: true, heroIn, reveal, readerIn, progressIn, swapIn, killAll, tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight };
+  window.Motion = { ready: true, heroIn, reveal, readerIn, progressIn, swapIn, killAll, tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight, secFx };
 })();
