@@ -4,12 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>夜神月 · 物联网技术博客</title>
+  <meta name="description" content="夜神月的物联网 0→1 学习博客：嵌入式、协议拆析、云边协同、网络工程、视频影音、智能家居，35 节小白向课程，正在登神长阶的路上。" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='14' y='14' width='36' height='36' rx='6' fill='%23FFE135' stroke='%230A0A0A' stroke-width='4'/%3E%3Crect x='26' y='26' width='12' height='12' fill='%230A0A0A'/%3E%3Cpath d='M20 4v8M32 4v8M44 4v8M20 52v8M32 52v8M44 52v8M4 20h8M4 32h8M4 44h8M52 20h8M52 32h8M52 44h8' stroke='%230A0A0A' stroke-width='4'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
+  <!-- 阅读进度条（文章页显示） -->
+  <div id="readbar" hidden><div class="rp-fill"></div></div>
+
   <!-- 导航 -->
   <nav class="nav">
     <div class="brand" id="brand"></div>
@@ -18,59 +23,80 @@
   </nav>
 
   <main id="app">
-    <!-- HERO -->
-    <header class="hero wrap">
-      <span class="badge mono">// IoT ENGINEER</span>
-      <h1>夜神月的技术博客</h1>
-      <p class="slogan" id="slogan"></p>
-      <div class="tech" id="tech"></div>
-      <div class="stats" id="stats"></div>
-    </header>
+    <!-- ============ 首页视图 ============ -->
+    <div id="home">
+      <!-- HERO -->
+      <header class="hero wrap">
+        <span class="badge mono">// IoT ENGINEER</span>
+        <p class="term-line" id="termLine" data-text="正在装载「登神长阶」：35 节课 · 5 个段位 · 0 基础友好 …… 就绪 [OK]"></p>
+        <h1>夜神月的技术博客</h1>
+        <p class="slogan" id="slogan"></p>
+        <div class="tech" id="tech"></div>
+        <div class="stats" id="stats"></div>
+      </header>
 
-    <!-- 关于 -->
-    <section class="sec wrap" id="about">
-      <div class="sec-head"><span class="kicker">ABOUT</span><h2>关于我</h2></div>
-      <div class="card bg-purple about reveal"><p id="aboutText"></p></div>
-    </section>
+      <!-- 关于 -->
+      <section class="sec wrap" id="about">
+        <div class="sec-head"><span class="kicker">ABOUT</span><h2>关于我</h2></div>
+        <div class="card bg-purple about reveal"><p id="aboutText"></p></div>
+      </section>
 
-    <!-- 栏目 -->
-    <section class="sec wrap" id="cats-sec">
-      <div class="sec-head"><span class="kicker">COLUMNS</span><h2>博客栏目</h2></div>
-      <div class="grid cols-3" id="cats"></div>
-    </section>
+      <!-- 栏目 -->
+      <section class="sec wrap" id="cats-sec">
+        <div class="sec-head"><span class="kicker">COLUMNS</span><h2>博客栏目</h2></div>
+        <div class="grid cols-3" id="cats"></div>
+      </section>
 
-    <!-- 文章 -->
-    <section class="sec wrap" id="posts-sec">
-      <div class="sec-head"><span class="kicker">POSTS</span><h2 id="postTitle">精选文章</h2>
-        <input id="searchInput" placeholder="🔍 搜索文章…" aria-label="搜索文章" style="margin-left:auto;max-width:220px;padding:8px 12px" />
-      </div>
-      <div class="posts" id="posts"></div>
-    </section>
+      <!-- 登神长阶路线图 -->
+      <section class="sec wrap" id="roadmap-sec">
+        <div class="sec-head"><span class="kicker">ROADMAP</span><h2>登神长阶</h2></div>
+        <div id="roadmap"></div>
+      </section>
 
-    <!-- 友链 -->
-    <section class="sec wrap" id="links-sec">
-      <div class="sec-head"><span class="kicker">LINKS</span><h2>友链</h2></div>
-      <div class="grid cols-3" id="links"></div>
-    </section>
+      <!-- 登神进度 -->
+      <section class="sec wrap" id="progress-sec">
+        <div id="progress"></div>
+      </section>
 
-    <!-- 标签云 -->
-    <section class="sec wrap" id="tags-sec">
-      <div class="sec-head"><span class="kicker">TAGS</span><h2>标签云</h2></div>
-      <div class="card tagcloud" id="tagcloud"></div>
-    </section>
-
-    <!-- 联系 CTA -->
-    <section class="sec wrap" id="contact">
-      <div class="cta">
-        <h2>一起把设备连上云</h2>
-        <p class="mono">有合作 / 提问 / 吐槽，欢迎来信</p>
-        <div class="links">
-          <a class="btn" id="ctaEmail" href="#">EMAIL</a>
-          <a class="btn alt" id="ctaGithub" href="#" target="_blank" rel="noopener">GITHUB</a>
+      <!-- 文章 -->
+      <section class="sec wrap" id="posts-sec">
+        <div class="sec-head">
+          <span class="kicker">POSTS</span>
+          <h2 id="postTitle">全部文章</h2>
+          <input id="searchInput" placeholder="🔍 搜索文章…" aria-label="搜索文章" style="margin-left:auto;max-width:220px;padding:8px 12px" />
         </div>
-        <div class="links" id="projList" style="margin-top:14px"></div>
-      </div>
-    </section>
+        <div id="listHead" class="list-head" hidden></div>
+        <div class="posts" id="posts"></div>
+      </section>
+
+      <!-- 友链 -->
+      <section class="sec wrap" id="links-sec">
+        <div class="sec-head"><span class="kicker">LINKS</span><h2>友链</h2></div>
+        <div class="grid cols-3" id="links"></div>
+      </section>
+
+      <!-- 标签云 -->
+      <section class="sec wrap" id="tags-sec">
+        <div class="sec-head"><span class="kicker">TAGS</span><h2>标签云</h2></div>
+        <div class="card tagcloud" id="tagcloud"></div>
+      </section>
+
+      <!-- 联系 CTA -->
+      <section class="sec wrap" id="contact">
+        <div class="cta">
+          <h2>一起把设备连上云</h2>
+          <p class="mono">有合作 / 提问 / 吐槽，欢迎来信</p>
+          <div class="links">
+            <a class="btn" id="ctaEmail" href="#">EMAIL</a>
+            <a class="btn alt" id="ctaGithub" href="#" target="_blank" rel="noopener">GITHUB</a>
+          </div>
+          <div class="links" id="projList" style="margin-top:14px"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ 文章详情视图（默认隐藏） ============ -->
+    <div id="reader" hidden></div>
   </main>
 
   <footer class="footer">
@@ -84,7 +110,14 @@
     </div>
   </footer>
 
+  <!-- 图片灯箱 / 返回顶部 -->
+  <div id="lightbox" hidden><img alt="预览" /></div>
+  <button id="toTop" type="button" hidden aria-label="返回顶部">↑</button>
+
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script src="/js/vendor/gsap.min.js"></script>
+  <script src="/js/vendor/ScrollTrigger.min.js"></script>
+  <script src="/js/motion.js"></script>
   <script src="/js/markdown.js"></script>
   <script src="/js/app.js"></script>
 </body>

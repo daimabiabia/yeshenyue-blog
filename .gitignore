@@ -7,3 +7,4 @@ cloudflared.exe
 .idea/
 .vscode/
 data/auth.json
+server.pid
