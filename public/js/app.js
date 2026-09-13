@@ -115,9 +115,10 @@
     $('#links').innerHTML = (s.friendLinks || []).map((l, i) =>
       `<a class="card ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url)}" target="_blank" rel="noopener"><h3>${escapeHtml(l.name)}</h3><p>${escapeHtml(l.desc || '')}</p></a>`).join('')
       || '<p class="hint">暂无友链，可在后台「站点设置」里添加。</p>';
-    $('#navLinks').innerHTML = [
-      ['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['/admin', '后台管理']
-    ].map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
+    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签']];
+    if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
+    else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
+    $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
     $('#navLinks').querySelectorAll('a').forEach((a) => {
       a.addEventListener('click', (e) => {
         const t = a.getAttribute('data-nav');
@@ -372,7 +373,9 @@
     loadTheme();
     $('#themeBtn').addEventListener('click', toggleTheme);
     try {
-      const r = await fetch('/api/site');
+      let r = await fetch('/api/site').catch(() => null);
+      if (!r || !r.ok) { r = await fetch('/data/site.json'); window.IS_STATIC_BLOG = true; }
+      if (!r || !r.ok) throw new Error('no site data');
       DATA = await r.json();
     } catch (e) {
       $('#home').innerHTML = '<p style="padding:40px">加载失败，请确认服务器已启动（node server.js）。</p>';
