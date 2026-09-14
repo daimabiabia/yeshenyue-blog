@@ -210,7 +210,7 @@ function defaultSite() {
       stats: [
         { num: 'Lv.1', label: '当前段位' },
         { num: '0→1', label: '实战路线' },
-        { num: '20', label: '学习笔记' },
+        { num: '{posts}', label: '学习笔记', dynamic: 'posts' },
         { num: '∞', label: '长阶待攀' },
       ],
       categories: [

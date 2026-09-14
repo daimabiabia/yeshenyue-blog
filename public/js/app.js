@@ -1,15 +1,16 @@
 /* 夜神月博客 · 前台逻辑（零依赖，视图状态版） */
 (function () {
   'use strict';
+  /* 图标用 currentColor，随主题自动适配（深色主题下浅色描边可见） */
   const ICONS = {
-    chip: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><rect x="10" y="10" width="28" height="28" rx="3"/><rect x="18" y="18" width="12" height="12" fill="#0A0A0A"/><path d="M16 4v6M32 4v6M16 38v6M32 38v6M4 16h6M4 32h6M38 16h6M38 32h6"/></svg>',
-    wave: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><path d="M4 24q6-14 10 0t10 0 10 0 10 0"/></svg>',
-    cloud: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><path d="M14 34a9 9 0 0 1 0-18 11 11 0 0 1 21 3 7 7 0 0 1-2 15z"/></svg>',
-    bug: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><ellipse cx="24" cy="24" rx="10" ry="13"/><path d="M24 11v26M14 18l-6-4M34 18l6-4M14 30l-6 4M34 30l6 4M10 24h-5M43 24h-5"/></svg>',
-    solder: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><path d="M8 40l24-24M30 8l8 8-6 6-8-8z"/><path d="M6 34l8 8"/></svg>',
-    net: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><circle cx="24" cy="24" r="4" fill="#0A0A0A"/><circle cx="10" cy="12" r="3.5"/><circle cx="38" cy="12" r="3.5"/><circle cx="10" cy="36" r="3.5"/><circle cx="38" cy="36" r="3.5"/><path d="M13 14l7 8M35 14l-7 8M13 34l7-8M35 34l-7-8"/></svg>',
-    av: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><rect x="7" y="14" width="34" height="20" rx="3"/><path d="M20 19l9 5-9 5z" fill="#0A0A0A" stroke="none"/></svg>',
-    home: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="#0A0A0A" stroke-width="3"><path d="M8 24l16-14 16 14"/><path d="M12 22v16h24V22"/><path d="M24 38v-9"/><path d="M19 30a5 5 0 0 1 10 0"/></svg>'
+    chip: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><rect x="10" y="10" width="28" height="28" rx="3"/><rect x="18" y="18" width="12" height="12" fill="currentColor"/><path d="M16 4v6M32 4v6M16 38v6M32 38v6M4 16h6M4 32h6M38 16h6M38 32h6"/></svg>',
+    wave: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 24q6-14 10 0t10 0 10 0 10 0"/></svg>',
+    cloud: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M14 34a9 9 0 0 1 0-18 11 11 0 0 1 21 3 7 7 0 0 1-2 15z"/></svg>',
+    bug: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><ellipse cx="24" cy="24" rx="10" ry="13"/><path d="M24 11v26M14 18l-6-4M34 18l6-4M14 30l-6 4M34 30l6 4M10 24h-5M43 24h-5"/></svg>',
+    solder: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 40l24-24M30 8l8 8-6 6-8-8z"/><path d="M6 34l8 8"/></svg>',
+    net: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><circle cx="24" cy="24" r="4" fill="currentColor"/><circle cx="10" cy="12" r="3.5"/><circle cx="38" cy="12" r="3.5"/><circle cx="10" cy="36" r="3.5"/><circle cx="38" cy="36" r="3.5"/><path d="M13 14l7 8M35 14l-7 8M13 34l7-8M35 34l-7-8"/></svg>',
+    av: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><rect x="7" y="14" width="34" height="20" rx="3"/><path d="M20 19l9 5-9 5z" fill="currentColor" stroke="none"/></svg>',
+    home: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 24l16-14 16 14"/><path d="M12 22v16h24V22"/><path d="M24 38v-9"/><path d="M19 30a5 5 0 0 1 10 0"/></svg>'
   };
   const CARD_BG = ['bg-pink', 'bg-yellow', 'bg-blue', 'bg-lime', 'bg-orange', 'bg-purple'];
   const $ = (s, r = document) => r.querySelector(s);
@@ -96,8 +97,26 @@
     $('#brand').innerHTML = ICONS.chip + '<span>夜神月 · IoT</span>';
     $('#slogan').textContent = s.slogan;
     $('#tech').innerHTML = s.techStack.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
-    $('#stats').innerHTML = s.stats.map((st, i) =>
-      `<div class="card bg-${['yellow', 'blue', 'lime'][i % 3]} reveal"><div class="num">${escapeHtml(st.num)}</div><div class="lbl">${escapeHtml(st.label)}</div></div>`).join('');
+    /* stats：支持 dynamic:'posts'，数值自动跟随真实文章总数（不再写死） */
+    const totalPosts = (DATA.posts || []).length;
+    const catsCount = (s.categories || []).length;
+    $('#stats').innerHTML = s.stats.map((st, i) => {
+      let num = String(st.num);
+      if (st.dynamic === 'posts' || num === '{posts}') num = String(totalPosts);
+      else if (st.dynamic === 'cats' || num === '{cats}') num = String(catsCount);
+      return `<div class="card bg-${['yellow', 'blue', 'lime'][i % 3]} reveal"><div class="num">${escapeHtml(num)}</div><div class="lbl">${escapeHtml(st.label)}</div></div>`;
+    }).join('');
+    /* 同步全站「文章数 / 方向数」文案：避免硬编码数字随内容增长而过时 */
+    const catsNum = (s.categories || []).length;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content',
+      (metaDesc.getAttribute('content') || '').replace(/\d+\s*节/, totalPosts + ' 节'));
+    const termLine = document.getElementById('termLine');
+    if (termLine && termLine.dataset.text) {
+      termLine.dataset.text = termLine.dataset.text
+        .replace(/\d+\s*节课/, totalPosts + ' 节课')
+        .replace(/\d+\s*个(段位|专业方向)/, catsNum + ' 个专业方向');
+    }
     $('#aboutText').textContent = s.about;
     $('#cats').innerHTML = s.categories.map((c, i) =>
       `<a class="card cat ${CARD_BG[i % 6]} reveal" href="#/cat/${c.id}">
@@ -142,15 +161,24 @@
     if (window.Motion && window.Motion.ready) {
       window.Motion.heroIn();
       window.Motion.tilt(document);
+      window.Motion.magnet(document);
     }
   }
 
   /* ---- 文章卡片 / 列表 ---- */
+  /* 栏目 → 主题色（注入 --cat，驱动卡片左侧色条） */
+  const CAT_COLOR = {
+    embedded: 'lime', protocol: 'blue', cloudedge: 'purple', pit: 'pink',
+    hardware: 'orange', net: 'blue', av: 'purple', smart: 'lime',
+  };
   function postCard(p, feat) {
     const lv = levelInfo(p.level);
     const rt = readingTime(p.content);
     const isRead = getReadSet().has(p.id);
-    return `<article class="card post ${feat ? 'feat' : ''} reveal" data-id="${p.id}">
+    const color = CAT_COLOR[p.category] || 'blue';
+    return `<article class="card post ${feat ? 'feat' : ''} ${isRead ? 'is-read' : ''} reveal"
+      data-id="${escapeAttr(p.id)}" style="--cat:var(--${color})">
+      ${feat ? '<span class="feat-flag">FEATURED</span>' : ''}
       <div class="meta">
         <span class="cat-chip">${escapeHtml(catName(p.category))}</span>
         <span class="lv-badge lv-${lv.lv}">Lv.${lv.lv} ${lv.name}</span>
@@ -237,7 +265,9 @@
     $('#posts-sec').scrollIntoView({ behavior: 'smooth' });
   }
   function viewArticle(id) {
-    const p = DATA.posts.find((x) => x.id === id);
+    /* 支持 id 与 slug 两种寻址：优先精确匹配 id，其次 slug（便于用语义化链接分享） */
+    const key = decodeURIComponent(id || '');
+    const p = DATA.posts.find((x) => x.id === key) || DATA.posts.find((x) => x.slug === key);
     if (!p) { location.hash = '#/'; return; }
     const lv = levelInfo(p.level);
     const rt = readingTime(p.content);
@@ -260,7 +290,7 @@
           <span>${escapeHtml(p.date)}</span>
         </div>
         <h1>${escapeHtml(p.title)}</h1>
-        <div class="md">${MD.render(p.content)}</div>
+        <div class="md">${MD.render(stripLeadingH1(p.content))}</div>
         <div class="meta" style="margin-top:24px">${(p.tags || []).map((t) => `<a class="ptag" href="#/tag/${encodeURIComponent(t)}">#${escapeHtml(t)}</a>`).join('')}</div>
         ${pnHtml}
         ${relHtml}
@@ -275,6 +305,8 @@
       window.Motion.readerIn();
       window.Motion.reveal($('#reader'));
       window.Motion.readProgress('.article');
+      window.Motion.imgReveal($('#reader'));
+      window.Motion.magnet($('#reader'));
     }
     const changed = markRead(p.id);
     renderProgress();
@@ -317,7 +349,8 @@
       btn.addEventListener('click', () => {
         navigator.clipboard.writeText(text).then(() => {
           btn.textContent = '已复制 ✓';
-          setTimeout(() => { btn.textContent = '复制'; }, 1600);
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1600);
         }).catch(() => { btn.textContent = '复制失败'; });
       });
       pre.appendChild(btn);
@@ -369,6 +402,20 @@
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  /* 去掉正文开头重复的 h1（文章页已有标题，避免同一标题出现两次） */
+  /* 正文标题规范化：
+   * 1) 去掉首个 h1（页面已有标题区，避免重复）
+   * 2) 其余 h1 整体降级为 h2，避免 h1 出现在 h2 之后造成层级倒挂
+   */
+  function stripLeadingH1(md) {
+    const lines = String(md || '').split('\n');
+    if (lines.length && /^#\s+/.test(lines[0])) {
+      lines.shift();
+      while (lines.length && lines[0].trim() === '') lines.shift();
+    }
+    return lines.map((l) => (/^#\s+/.test(l) ? '#' + l : l)).join('\n');
+  }
+
   /* ---- 初始化 ---- */
   async function init() {
     loadTheme();
@@ -408,16 +455,19 @@
       const nx = DATA.posts[idx + (e.key === 'ArrowRight' ? 1 : -1)];
       if (nx) location.hash = '#/post/' + nx.id;
     });
-    /* 返回顶部按钮 */
+    /* 返回顶部按钮 + 导航滚动态 */
     const tt = $('#toTop');
-    if (tt) {
-      tt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-      window.addEventListener('scroll', () => {
-        const show = window.scrollY > 600;
+    const nav = $('.nav');
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY;
+      if (tt) {
+        const show = y > 600;
         if (show && tt.hidden) { tt.hidden = false; if (window.Motion && window.Motion.ready) window.Motion.pop(tt); }
         else if (!show && !tt.hidden) tt.hidden = true;
-      }, { passive: true });
-    }
+      }
+      if (nav) nav.classList.toggle('is-stuck', y > 40);
+    }, { passive: true });
+    if (tt) tt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     route();
   }
   document.addEventListener('DOMContentLoaded', init);

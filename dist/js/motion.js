@@ -56,6 +56,7 @@
         stagger: { each: 0.045, from: 'random' },
         duration: 0.38, ease: 'back.out(2.4)'
       }, '-=0.3');
+    charFx(); /* 拆字完成后挂 hover 弹跳 */
   }
 
   /* ---- 滚动进场：接管 .reveal 卡片与标签云（ScrollTrigger.batch，批量错峰） ---- */
@@ -177,6 +178,57 @@
   function pop(el) {
     if (!el || REDUCE) return;
     gsap.fromTo(el, { scale: 0.82, rotation: -8 }, { scale: 1, rotation: 0, duration: 0.45, ease: 'back.out(2.6)', overwrite: true });
+  }
+
+  /* ---- 磁吸按钮：鼠标靠近时轻微跟随（quickTo 复用补间，桌面端专属） ---- */
+  function magnet(scope) {
+    if (REDUCE || !CAN_HOVER) return;
+    (scope || document).querySelectorAll('.btn, #toTop').forEach((el) => {
+      if (el.dataset.magnet) return;
+      el.dataset.magnet = '1';
+      const xTo = gsap.quickTo(el, 'x', { duration: 0.4, ease: 'power3' });
+      const yTo = gsap.quickTo(el, 'y', { duration: 0.4, ease: 'power3' });
+      el.addEventListener('mousemove', (e) => {
+        const r = el.getBoundingClientRect();
+        xTo(((e.clientX - r.left) / r.width - 0.5) * 12);
+        yTo(((e.clientY - r.top) / r.height - 0.5) * 8);
+      });
+      el.addEventListener('mouseleave', () => { xTo(0); yTo(0); });
+    });
+  }
+
+  /* ---- 标题拆字 hover 弹跳：每个字独立回弹，增加把玩感 ---- */
+  function charFx() {
+    if (REDUCE || !CAN_HOVER) return;
+    document.querySelectorAll('.hero h1 .char').forEach((c) => {
+      if (c.dataset.charfx) return;
+      c.dataset.charfx = '1';
+      c.style.cursor = 'default';
+      c.addEventListener('mouseenter', () => {
+        gsap.to(c, {
+          yPercent: -20, rotation: gsap.utils.random(-14, 14),
+          duration: 0.26, ease: 'back.out(3)', overwrite: true,
+          onComplete: () => gsap.to(c, { yPercent: 0, rotation: 0, duration: 0.55, ease: 'elastic.out(1, 0.45)' })
+        });
+      });
+    });
+  }
+
+  /* ---- 正文图片揭示：从下往上揭开（clip-path，与视差/进场分属不同属性） ---- */
+  function imgReveal(scope) {
+    if (REDUCE || !ST) return;
+    const root = scope || document;
+    root.querySelectorAll('.md img').forEach((img) => {
+      if (img.dataset.imgfx) return;
+      img.dataset.imgfx = '1';
+      gsap.fromTo(img,
+        { clipPath: 'inset(0% 0% 100% 0%)' },
+        {
+          clipPath: 'inset(0% 0% 0% 0%)',
+          duration: 0.95, ease: 'power3.out',
+          scrollTrigger: { trigger: img, start: 'top 90%', once: true }
+        });
+    });
   }
 
   /* ---- 终端打字机欢迎行（光标闪烁由 CSS 提供） ---- */
@@ -324,5 +376,9 @@
     document.fonts.ready.then(() => ST.refresh()).catch(() => {});
   }
 
-  window.Motion = { ready: true, heroIn, reveal, readerIn, progressIn, swapIn, killAll, tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight, secFx };
+  window.Motion = {
+    ready: true, heroIn, reveal, readerIn, progressIn, swapIn, killAll,
+    tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight, secFx,
+    magnet, charFx, imgReveal,
+  };
 })();
