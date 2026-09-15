@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="alternate" type="application/rss+xml" title="夜神月博客 RSS" href="/rss.xml" />
 </head>
 <body>
   <!-- 阅读进度条（文章页显示） -->
@@ -19,7 +20,11 @@
   <nav class="nav">
     <div class="brand" id="brand"></div>
     <div class="links" id="navLinks"></div>
-    <button class="theme-toggle" id="themeBtn" aria-label="切换深浅主题">🌙</button>
+    <div class="nav-actions">
+      <button class="dice-btn" id="diceBtn" type="button" title="随机一课 (R)" aria-label="随机一课">🎲</button>
+      <button class="kbd-hint-btn" id="kbdBtn" type="button" title="快捷键 (?)">⌨</button>
+      <button class="theme-toggle" id="themeBtn" aria-label="切换深浅主题">🌙</button>
+    </div>
   </nav>
 
   <main id="app">
@@ -34,6 +39,11 @@
         <div class="tech" id="tech"></div>
         <div class="stats" id="stats"></div>
       </header>
+
+      <!-- 继续阅读足迹（JS 有记录才显示） -->
+      <section class="sec wrap" id="footprint-sec" hidden>
+        <div id="footprints"></div>
+      </section>
 
       <!-- 关于 -->
       <section class="sec wrap" id="about">
@@ -105,6 +115,7 @@
       <div class="mono">
         <a id="footEmail" href="#">email</a> ·
         <a id="footGithub" href="#" target="_blank" rel="noopener">github</a> ·
+        <a href="/rss.xml" target="_blank" rel="noopener">rss</a> ·
         <a id="footAdmin" href="/admin">后台管理</a>
       </div>
     </div>
@@ -113,6 +124,37 @@
   <!-- 图片灯箱 / 返回顶部 -->
   <div id="lightbox" hidden><img alt="预览" /></div>
   <button id="toTop" type="button" hidden aria-label="返回顶部">↑</button>
+
+  <!-- Ctrl+K 命令面板 -->
+  <div id="cmdk" hidden role="dialog" aria-modal="true" aria-label="快速跳转">
+    <div class="cmdk-mask"></div>
+    <div class="cmdk-panel">
+      <div class="cmdk-head">
+        <span class="cmdk-glyph mono">›</span>
+        <input id="cmdkInput" type="text" placeholder="搜索文章 / 栏目 / 标签…" autocomplete="off" spellcheck="false" />
+        <span class="cmdk-esc mono">ESC</span>
+      </div>
+      <div class="cmdk-list" id="cmdkList" role="listbox"></div>
+      <div class="cmdk-foot mono"><kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>Enter</kbd> 跳转 · <kbd>Ctrl</kbd>+<kbd>K</kbd> 呼出</div>
+    </div>
+  </div>
+
+  <!-- 快捷键帮助 -->
+  <div id="kbdHelp" hidden role="dialog" aria-modal="true" aria-label="键盘快捷键">
+    <div class="cmdk-mask"></div>
+    <div class="cmdk-panel kbd-panel">
+      <div class="cmdk-head"><b>⌨ 键盘快捷键</b><span class="cmdk-esc mono">ESC</span></div>
+      <div class="kbd-rows">
+        <div class="kbd-row"><span>呼出快速跳转</span><span><kbd>Ctrl</kbd> + <kbd>K</kbd></span></div>
+        <div class="kbd-row"><span>聚焦搜索框（首页）</span><span><kbd>/</kbd></span></div>
+        <div class="kbd-row"><span>随机抽一课</span><span><kbd>R</kbd></span></div>
+        <div class="kbd-row"><span>上一课 / 下一课（文章页）</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
+        <div class="kbd-row"><span>返回顶部</span><span><kbd>T</kbd></span></div>
+        <div class="kbd-row"><span>深浅主题切换</span><span><kbd>D</kbd></span></div>
+        <div class="kbd-row"><span>关闭弹层</span><span><kbd>ESC</kbd></span></div>
+      </div>
+    </div>
+  </div>
 
   <script src="/js/vendor/gsap.min.js"></script>
   <script src="/js/vendor/ScrollTrigger.min.js"></script>

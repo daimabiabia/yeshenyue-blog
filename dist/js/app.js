@@ -23,6 +23,7 @@
     return Math.max(1, Math.round(chars / 350));
   };
   const READ_KEY = 'ysy_read_posts';
+  const FOOT_KEY = 'ysy_footprints';
   function getReadSet() {
     try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); } catch (e) { return new Set(); }
   }
@@ -32,6 +33,75 @@
     s.add(id);
     try { localStorage.setItem(READ_KEY, JSON.stringify([...s])); } catch (e) {}
     return true;
+  }
+  /* ---- 阅读足迹：记录最近浏览（去重置顶，最多留 20 条） ---- */
+  function pushFootprint(id) {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(FOOT_KEY) || '[]'); } catch (e) {}
+    list = list.filter((x) => x.id !== id);
+    list.unshift({ id, t: Date.now() });
+    try { localStorage.setItem(FOOT_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {}
+  }
+  function getFootprints() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(FOOT_KEY) || '[]'); } catch (e) {}
+    return list.map((x) => DATA.posts.find((p) => p.id === x.id)).filter(Boolean);
+  }
+  /* 「继续阅读」足迹卡：最新一篇大卡 + 历史小卡，无记录不显示 */
+  function renderFootprints() {
+    const sec = $('#footprint-sec'), el = $('#footprints');
+    if (!sec || !el) return;
+    const feet = getFootprints().slice(0, 3);
+    if (!feet.length) { sec.hidden = true; el.innerHTML = ''; return; }
+    const ago = (t) => {
+      const m = Math.round((Date.now() - t) / 60000);
+      if (m < 1) return '刚刚';
+      if (m < 60) return m + ' 分钟前';
+      const h = Math.round(m / 60);
+      if (h < 24) return h + ' 小时前';
+      return Math.round(h / 24) + ' 天前';
+    };
+    const card = (p, big, when) => {
+      const lv = levelInfo(p.level);
+      const color = CAT_COLOR[p.category] || 'blue';
+      return `<a class="foot-card reveal in" href="#/post/${p.id}" style="--cat:var(--${color})">
+        <span class="foot-icon">${big ? '📖' : '↩'}</span>
+        <span class="foot-body">
+          <span class="foot-kicker">${big ? '继续阅读 · 上次读到这里' : '最近阅读'}</span>
+          <h3>${escapeHtml(p.title)}</h3>
+          <span class="foot-meta"><span class="cat-chip">${escapeHtml(catName(p.category))}</span>
+            <span>Lv.${lv.lv} ${lv.name}</span>${when ? `<span>${when}</span>` : ''}</span>
+        </span>
+        <span class="foot-go">→</span></a>`;
+    };
+    const list = feet.slice(1).map((p) => card(p, false, '')).join('');
+    el.innerHTML = `<div class="sec-head"><span class="kicker">RESUME</span><h2>继续阅读</h2></div>
+      ${card(feet[0], true, '阅读于 ' + ago(Date.now()))}
+      ${list ? `<div class="foot-list" style="margin-top:10px">${list}</div>` : ''}`;
+    sec.hidden = false;
+  }
+
+  /* ---- 随机一课：摇骰动画后跳转（排除当前篇） ---- */
+  let rolling = false;
+  function rollDice() {
+    if (rolling || !DATA.posts.length) return;
+    rolling = true;
+    const btn = $('#diceBtn');
+    if (btn) btn.classList.add('rolling');
+    const cur = (location.hash.match(/^#\/post\/([^/?]+)/) || [])[1];
+    const pool = DATA.posts.filter((p) => p.id !== cur);
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const label = $('#postTitle');
+    let n = 0;
+    const spin = setInterval(() => {
+      if (label) label.textContent = '🎲 ' + DATA.posts[Math.floor(Math.random() * DATA.posts.length)].title;
+      if (++n >= 8) {
+        clearInterval(spin);
+        if (btn) btn.classList.remove('rolling');
+        rolling = false;
+        if (pick) location.hash = '#/post/' + pick.id;
+      }
+    }, 70);
   }
   function renderProgress() {
     const el = $('#progress');
@@ -232,6 +302,8 @@
     bindSearch();
     renderProgress();
     renderRoadmap();
+    renderFootprints();
+    resetSeo();
     if (window.Motion && window.Motion.ready) {
       window.Motion.progressIn();   /* 先标记进度卡，再让 reveal 跳过它 */
       window.Motion.roadmapIn();
@@ -271,6 +343,7 @@
     if (!p) { location.hash = '#/'; return; }
     const lv = levelInfo(p.level);
     const rt = readingTime(p.content);
+    const words = (p.content || '').replace(/\s/g, '').length;
     const rel = DATA.posts.filter((x) => x.id !== p.id && (x.category === p.category || (x.tags || []).some((t) => (p.tags || []).includes(t)))).slice(0, 3);
     const relHtml = rel.length ? `<section class="rel"><h3>相关文章</h3><div class="posts">${rel.map((x) => postCard(x, false)).join('')}</div></section>` : '';
     const idx = DATA.posts.indexOf(p);
@@ -287,6 +360,7 @@
           <span class="cat-chip">${escapeHtml(catName(p.category))}</span>
           <span class="lv-badge lv-${lv.lv}">Lv.${lv.lv} ${lv.name}</span>
           <span class="rt mono">⏱ 约 ${rt} 分钟</span>
+          <span class="word-chip mono">约 ${words.toLocaleString()} 字</span>
           <span>${escapeHtml(p.date)}</span>
         </div>
         <h1>${escapeHtml(p.title)}</h1>
@@ -299,6 +373,7 @@
     $('#reader').hidden = false;
     if ($('#readbar')) $('#readbar').hidden = false;
     document.title = p.title + ' · 夜神月博客';
+    applySeo(p);
     window.scrollTo(0, 0);
     if (window.Motion && window.Motion.ready) {
       window.Motion.swapIn($('#reader'));
@@ -309,6 +384,7 @@
       window.Motion.magnet($('#reader'));
     }
     const changed = markRead(p.id);
+    pushFootprint(p.id);
     renderProgress();
     if (changed) { /* 进度已更新，下次回首页即可见 */ }
     $('#reader').querySelectorAll('.rel .post').forEach((el) =>
@@ -366,6 +442,142 @@
       });
     });
   }
+
+  /* ---- SEO：文章页动态注入 Open Graph + JSON-LD，回首页复位 ---- */
+  function upsertMeta(attr, key, content) {
+    let m = document.head.querySelector(`meta[${attr}="${key}"]`);
+    if (!m) {
+      m = document.createElement('meta');
+      m.setAttribute(attr, key);
+      document.head.appendChild(m);
+    }
+    m.setAttribute('content', content);
+  }
+  function applySeo(p) {
+    const desc = p.excerpt || p.title;
+    const url = location.origin + location.pathname + '#/post/' + (p.slug || p.id);
+    upsertMeta('property', 'og:title', p.title);
+    upsertMeta('property', 'og:description', desc);
+    upsertMeta('property', 'og:type', 'article');
+    upsertMeta('property', 'og:url', url);
+    upsertMeta('name', 'description', desc);
+    let ld = document.getElementById('ld-json');
+    if (!ld) {
+      ld = document.createElement('script');
+      ld.type = 'application/ld+json';
+      ld.id = 'ld-json';
+      document.head.appendChild(ld);
+    }
+    ld.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: p.title,
+      description: desc,
+      datePublished: p.date,
+      keywords: (p.tags || []).join(','),
+      articleSection: catName(p.category),
+      inLanguage: 'zh-CN',
+    });
+  }
+  function resetSeo() {
+    const s = DATA.site;
+    upsertMeta('property', 'og:title', s.title || '夜神月 · 物联网技术博客');
+    upsertMeta('property', 'og:description', s.slogan || '');
+    upsertMeta('property', 'og:type', 'website');
+    upsertMeta('name', 'description',
+      `${s.slogan || ''} ${DATA.posts.length} 节小白向课程，8 个专业方向。`.trim());
+    const ld = document.getElementById('ld-json');
+    if (ld) ld.remove();
+  }
+
+  /* ---- Ctrl+K 命令面板：全站快速跳转（文章 / 栏目 / 标签 / 动作） ---- */
+  const CMDK = { open: false, items: [], sel: 0 };
+  function buildCmdkItems(q) {
+    const items = [];
+    const push = (o) => items.push(o);
+    if (!q) {
+      push({ kind: '动作', icon: '🎲', title: '随机抽一课', run: rollDice });
+      push({ kind: '动作', icon: '🌓', title: '切换深浅主题', run: toggleTheme });
+      push({ kind: '动作', icon: '⌨', title: '查看键盘快捷键', run: openKbdHelp });
+      DATA.site.categories.forEach((c) =>
+        push({ kind: '栏目', icon: ICONS[c.icon] || ICONS.chip, title: c.name, sub: c.desc || '', href: '#/cat/' + c.id }));
+    }
+    const posts = DATA.posts.filter((p) =>
+      !q || (p.title + ' ' + (p.excerpt || '') + ' ' + (p.tags || []).join(' ') + ' ' + catName(p.category)).toLowerCase().includes(q));
+    posts.slice(0, q ? 8 : 5).forEach((p) => {
+      const color = CAT_COLOR[p.category] || 'blue';
+      push({ kind: '文章', icon: '📄', title: p.title, sub: catName(p.category) + ' · Lv.' + levelInfo(p.level).lv, href: '#/post/' + p.id, cat: color });
+    });
+    const tags = DATA.site.tags.filter((t) =>
+      !q || t.toLowerCase().includes(q));
+    tags.slice(0, q ? 4 : 6).forEach((t) =>
+      push({ kind: '标签', icon: '#', title: t, href: '#/tag/' + encodeURIComponent(t) }));
+    return items;
+  }
+  function cmdkHighlight(title, q) {
+    if (!q) return escapeHtml(title);
+    const i = title.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return escapeHtml(title);
+    return escapeHtml(title.slice(0, i)) + '<mark>' + escapeHtml(title.slice(i, i + q.length)) + '</mark>' + escapeHtml(title.slice(i + q.length));
+  }
+  function renderCmdk() {
+    const q = $('#cmdkInput').value.trim();
+    CMDK.items = buildCmdkItems(q);
+    CMDK.sel = 0;
+    if (!CMDK.items.length) {
+      $('#cmdkList').innerHTML = '<div class="cmdk-empty">没有匹配结果，换个关键词试试。</div>';
+      return;
+    }
+    let lastKind = '';
+    $('#cmdkList').innerHTML = CMDK.items.map((it, i) => {
+      const label = it.kind !== lastKind ? `<div class="cmdk-group-label">${it.kind}</div>` : '';
+      lastKind = it.kind;
+      const icon = it.icon.startsWith('<') ? `<span class="ck-icon">${it.icon}</span>` : `<span class="ck-emoji">${it.icon}</span>`;
+      return `${label}<div class="cmdk-item${i === 0 ? ' sel' : ''}" data-i="${i}" role="option">
+        ${icon}<span class="ck-main"><span class="ck-title">${cmdkHighlight(it.title, q)}</span>
+        ${it.sub ? `<span class="ck-sub">${escapeHtml(it.sub)}</span>` : ''}</span>
+        <span class="ck-kind">${it.kind}</span></div>`;
+    }).join('');
+    $('#cmdkList').querySelectorAll('.cmdk-item').forEach((el) => {
+      el.addEventListener('click', () => cmdkRun(Number(el.dataset.i)));
+      el.addEventListener('mousemove', () => cmdkSelect(Number(el.dataset.i)));
+    });
+  }
+  function cmdkSelect(i) {
+    CMDK.sel = i;
+    $('#cmdkList').querySelectorAll('.cmdk-item').forEach((el) =>
+      el.classList.toggle('sel', Number(el.dataset.i) === i));
+    const sel = $('#cmdkList').querySelector('.cmdk-item.sel');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
+  function cmdkMove(d) {
+    if (!CMDK.items.length) return;
+    cmdkSelect((CMDK.sel + d + CMDK.items.length) % CMDK.items.length);
+  }
+  function cmdkRun(i) {
+    const it = CMDK.items[i];
+    if (!it) return;
+    closeCmdk();
+    if (it.run) it.run();
+    else if (it.href) location.hash = it.href;
+  }
+  function openCmdk() {
+    if (CMDK.open) return;
+    CMDK.open = true;
+    $('#cmdk').hidden = false;
+    $('#cmdkInput').value = '';
+    renderCmdk();
+    setTimeout(() => $('#cmdkInput').focus({ preventScroll: true }), 30);
+  }
+  function closeCmdk() {
+    CMDK.open = false;
+    const el = $('#cmdk');
+    if (el) el.hidden = true;
+  }
+
+  /* ---- 快捷键帮助弹层 ---- */
+  function openKbdHelp() { const el = $('#kbdHelp'); if (el) el.hidden = false; }
+  function closeKbdHelp() { const el = $('#kbdHelp'); if (el) el.hidden = true; }
 
   /* ---- 路由 ---- */
   function setNavActive(h) {
@@ -433,20 +645,56 @@
     }
     renderShell();
     window.addEventListener('hashchange', route);
+    /* 新模块控件绑定 */
+    const dice = $('#diceBtn');
+    if (dice) dice.addEventListener('click', rollDice);
+    const kb = $('#kbdBtn');
+    if (kb) kb.addEventListener('click', openKbdHelp);
+    [$('#cmdk'), $('#kbdHelp')].forEach((m) => {
+      if (!m) return;
+      m.querySelector('.cmdk-mask').addEventListener('click', () => { m.hidden = true; CMDK.open = false; });
+    });
+    const ci = $('#cmdkInput');
+    if (ci) {
+      ci.addEventListener('input', renderCmdk);
+      ci.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); cmdkMove(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMove(-1); }
+        else if (e.key === 'Enter') { e.preventDefault(); cmdkRun(CMDK.sel); }
+      });
+    }
     document.addEventListener('keydown', (e) => {
       /* 灯箱：ESC 关闭 */
       const lb = $('#lightbox');
       if (lb && !lb.hidden && e.key === 'Escape') { lb.hidden = true; return; }
+      /* ESC 关闭命令面板 / 帮助 */
+      if (e.key === 'Escape') {
+        if (!$('#cmdk').hidden) { closeCmdk(); return; }
+        if (!$('#kbdHelp').hidden) { closeKbdHelp(); return; }
+      }
+      /* Ctrl/Cmd + K：命令面板（输入框中也响应） */
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        CMDK.open ? closeCmdk() : openCmdk();
+        return;
+      }
       const inField = /INPUT|TEXTAREA/.test(e.target.tagName);
+      if (inField) return;
       /* 首页快捷键：/ 聚焦搜索框 */
-      if (e.key === '/' && !inField && $('#reader').hidden) {
+      if (e.key === '/' && $('#reader').hidden) {
         e.preventDefault();
         const si = $('#searchInput');
         if (si) { si.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => si.focus({ preventScroll: true }), 320); }
         return;
       }
+      /* 全局快捷键：? 帮助 · R 随机一课 · T 回顶 · D 主题 */
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) { openKbdHelp(); return; }
+      const k = e.key.toLowerCase();
+      if (k === 'r') { rollDice(); return; }
+      if (k === 't') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      if (k === 'd') { toggleTheme(); return; }
       /* 文章页快捷键：← → 翻上一课/下一课 */
-      if ($('#reader').hidden || inField) return;
+      if ($('#reader').hidden) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       const m = location.hash.match(/^#\/post\/(.+)$/);
       if (!m) return;

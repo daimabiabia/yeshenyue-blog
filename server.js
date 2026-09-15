@@ -290,6 +290,38 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, site);
     }
 
+    /* ---- RSS 订阅源：最新 30 篇，标题 + 摘要 + 链接 ---- */
+    if (method === 'GET' && pathname === '/rss.xml') {
+      const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const base = 'http' + (req.headers['x-forwarded-proto'] === 'https' ? 's' : '') + '://' + (req.headers.host || 'localhost:3000');
+      const cats = Object.fromEntries((site.site.categories || []).map((c) => [c.id, c.name]));
+      const items = site.posts.slice(0, 30).map((p) => {
+        const link = base + '/#/post/' + (p.slug || p.id);
+        const desc = esc(p.excerpt || p.title);
+        return `    <item>
+      <title>${esc(p.title)}</title>
+      <link>${esc(link)}</link>
+      <guid isPermaLink="false">${esc(p.id)}</guid>
+      <category>${esc(cats[p.category] || p.category)}</category>
+      <pubDate>${new Date(p.date).toUTCString()}</pubDate>
+      <description>${desc}</description>
+    </item>`;
+      }).join('\n');
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>${esc(site.site.title)}</title>
+    <link>${esc(base)}</link>
+    <description>${esc(site.site.slogan || '')}</description>
+    <language>zh-CN</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+${items}
+  </channel>
+</rss>`;
+      res.writeHead(200, { 'Content-Type': 'application/rss+xml; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(xml);
+    }
+
     /* ---- 登录（带限速：连续失败 5 次锁 15 分钟） ---- */
     if (method === 'POST' && pathname === '/api/login') {
       const ip = req.socket.remoteAddress || 'unknown';

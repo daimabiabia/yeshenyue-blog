@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, 'public', 'js', 'markdown.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'markdown.js'), 'utf8');
 const win = {};
 new Function('window', src)(win);
 const MD = win.MD;
@@ -20,7 +20,7 @@ function normalize(md) {
   return lines.map((l) => (/^#\s+/.test(l) ? '#' + l : l)).join('\n');
 }
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'site.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'site.json'), 'utf8'));
 const posts = data.posts;
 
 const fail = [];
