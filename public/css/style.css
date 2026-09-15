@@ -1364,3 +1364,30 @@ p:last-child { margin-bottom: 0; }
   .foot-card .foot-go { display: none; }
   .kbd-hint-btn { display: none; }
 }
+
+/* ============ 17. 特效增强：复制链接 / 进度百分比 ============ */
+.copy-link {
+  font: 600 12.5px var(--font-sans); color: var(--ink); cursor: pointer;
+  background: var(--page-3, #eee); border: 1.5px solid var(--line-soft);
+  border-radius: 999px; padding: 3px 10px;
+  transition: transform var(--t-fast) var(--ease-back), background var(--t-fast) var(--ease);
+}
+.copy-link:hover { transform: translateY(-1px); background: var(--yellow); border-color: var(--line); }
+.copy-link:active { transform: translateY(0); }
+
+#readbarPct {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 10.5px; font-weight: 700; color: var(--ink);
+  background: var(--yellow); border: 1.5px solid var(--line);
+  border-radius: 999px; padding: 1px 7px; line-height: 1.5;
+}
+
+#fx-canvas { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  #fx-canvas { display: none !important; }
+}
+
+@media print {
+  #fx-canvas, #readbarPct { display: none !important; }
+}

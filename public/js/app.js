@@ -362,6 +362,7 @@
           <span class="rt mono">⏱ 约 ${rt} 分钟</span>
           <span class="word-chip mono">约 ${words.toLocaleString()} 字</span>
           <span>${escapeHtml(p.date)}</span>
+          <button type="button" class="copy-link" title="复制本文链接">🔗 复制链接</button>
         </div>
         <h1>${escapeHtml(p.title)}</h1>
         <div class="md">${MD.render(stripLeadingH1(p.content))}</div>
@@ -392,10 +393,26 @@
     bindArticleExtras();
   }
 
-  /* ---- 文章页增强：目录 TOC / 复制代码 / 图片灯箱 ---- */
+  /* ---- 文章页增强：目录 TOC / 复制代码 / 复制链接 / 图片灯箱 ---- */
   function bindArticleExtras() {
     const article = $('#reader .article');
     if (!article) return;
+    /* 一键复制本文链接 */
+    const cl = article.querySelector('.copy-link');
+    if (cl) {
+      cl.addEventListener('click', () => {
+        const url = location.origin + location.pathname + location.hash;
+        const done = () => { cl.textContent = '✓ 已复制'; setTimeout(() => { cl.textContent = '🔗 复制链接'; }, 1600); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done).catch(() => { cl.textContent = '复制失败'; });
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = url; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); done(); } catch (e) { cl.textContent = '复制失败'; }
+          ta.remove();
+        }
+      });
+    }
     /* 目录（>=3 个标题才生成，大屏右侧浮动） */
     const heads = Array.from(article.querySelectorAll('.md h2, .md h3'));
     if (heads.length >= 3) {
@@ -703,7 +720,7 @@
       const nx = DATA.posts[idx + (e.key === 'ArrowRight' ? 1 : -1)];
       if (nx) location.hash = '#/post/' + nx.id;
     });
-    /* 返回顶部按钮 + 导航滚动态 */
+    /* 返回顶部按钮 + 导航滚动态 + 阅读进度百分比 + 标签页标题彩蛋 */
     const tt = $('#toTop');
     const nav = $('.nav');
     window.addEventListener('scroll', () => {
@@ -714,7 +731,29 @@
         else if (!show && !tt.hidden) tt.hidden = true;
       }
       if (nav) nav.classList.toggle('is-stuck', y > 40);
+      /* 文章页阅读进度百分比：滚动条走的比例（按整页高度近似文章长度） */
+      const rb = $('#readbar');
+      const pct = $('#readbarPct');
+      if (rb && pct && !rb.hidden) {
+        const max = document.documentElement.scrollHeight - innerHeight;
+        const v = max > 0 ? Math.min(100, Math.max(0, Math.round((y / max) * 100))) : 0;
+        pct.textContent = v + '%';
+      }
     }, { passive: true });
+    /* 标签页标题彩蛋：切走时提示回来，切回还原 */
+    const HOME_TITLE = '夜神月 · 物联网技术博客';
+    let awayTitle = false;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        document.title = '📡 信号丢失…点回来继续登神长阶';
+        awayTitle = true;
+      } else if (awayTitle) {
+        awayTitle = false;
+        const m = location.hash.match(/^#\/post\/(.+)$/);
+        const p = m && DATA.posts.find((x) => x.id === decodeURIComponent(m[1]));
+        document.title = p ? p.title + ' · 夜神月博客' : HOME_TITLE;
+      }
+    });
     if (tt) tt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     route();
   }
