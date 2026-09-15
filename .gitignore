@@ -8,3 +8,5 @@ cloudflared.exe
 .vscode/
 data/auth.json
 server.pid
+
+data/auth.json.bak-*

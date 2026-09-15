@@ -30,6 +30,14 @@
     .err { color:#c0143c !important; }
     .field label::after { content:""; }
     #saveMsg[class="hint err"] { color:#c0143c; }
+  
+    .stats-bar { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+    .sb-item { display:flex; flex-direction:column; align-items:center; min-width:70px; }
+    .sb-item b { font-size:22px; font-family:"JetBrains Mono",monospace; }
+    .sb-item span { font-size:11px; color:var(--ink-2,#666); }
+    .sb-dist { display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; }
+    .sb-chip { font-size:11px; border:2px solid var(--line,#0A0A0A); border-radius:999px; padding:2px 8px; }
+    .sb-chip b { font-family:"JetBrains Mono",monospace; }
   </style>
 </head>
 <body>
@@ -48,7 +56,7 @@
       <h2 style="margin-top:0">管理员登录</h2>
       <div class="field">
         <label>密码</label>
-        <input type="password" id="passInput" placeholder="默认 yeshenyue" />
+        <input type="password" id="passInput" placeholder="输入管理员密码" />
       </div>
       <button class="btn" id="loginBtn" style="width:100%">登 录</button>
       <p class="hint" id="loginMsg"></p>
@@ -66,8 +74,10 @@
 
     <!-- 文章 -->
     <div class="panel" id="tab-posts">
+      <div class="card stats-bar" id="statsBar" style="margin-bottom:14px"></div>
       <div class="row" style="margin-bottom:14px">
         <button class="btn" id="newPost">+ 写新文章</button>
+        <button class="btn alt" id="backupBtn">⬇ 下载整站备份</button>
         <span class="hint">共 <span id="postCount">0</span> 篇</span>
       </div>
       <div id="postList"></div>

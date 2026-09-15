@@ -206,7 +206,7 @@
     $('#links').innerHTML = (s.friendLinks || []).map((l, i) =>
       `<a class="card ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url)}" target="_blank" rel="noopener"><h3>${escapeHtml(l.name)}</h3><p>${escapeHtml(l.desc || '')}</p></a>`).join('')
       || '<p class="hint">暂无友链，可在后台「站点设置」里添加。</p>';
-    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签']];
+    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档']];
     if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
     $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
@@ -297,6 +297,8 @@
   /* ---- 视图切换（显式状态，不依赖 DOM 探测） ---- */
   function viewHome() {
     $('#reader').hidden = true;
+    const arch = $('#archive');
+    if (arch) arch.hidden = true;
     $('#home').hidden = false;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '夜神月 · 物联网技术博客';
@@ -305,6 +307,7 @@
     renderProgress();
     renderRoadmap();
     renderFootprints();
+    if (window.ACH) ACH.renderWall('#achWall');
     resetSeo();
     if (window.Motion && window.Motion.ready) {
       window.Motion.progressIn();   /* 先标记进度卡，再让 reveal 跳过它 */
@@ -316,11 +319,45 @@
       observeReveal();
     }
   }
+  /* ---- 归档视图：按年月分组的时间线 ---- */
+  function viewArchive() {
+    $('#reader').hidden = true;
+    const arch = $('#archive');
+    if (!arch) { viewHome(); return; }
+    $('#home').hidden = true;
+    arch.hidden = false;
+    if ($('#readbar')) $('#readbar').hidden = true;
+    document.title = '归档 · 夜神月博客';
+    resetSeo();
+    const CAT_COLOR = { embedded: 'blue', protocol: 'purple', cloudedge: 'cyan', pit: 'red', hardware: 'orange', net: 'green', av: 'pink', smart: 'yellow' };
+    const groups = {};
+    for (const p of DATA.posts) {
+      const ym = String(p.date || '').slice(0, 7) || '未知';
+      (groups[ym] = groups[ym] || []).push(p);
+    }
+    const months = Object.keys(groups).sort().reverse();
+    arch.innerHTML = '<section class="sec wrap"><div class="sec-head"><span class="kicker">ARCHIVE</span><h2>全部归档</h2></div>' +
+      '<p class="hint" style="margin-bottom:18px">共 ' + DATA.posts.length + ' 篇 · ' + months.length + ' 个月份</p>' +
+      months.map((ym) => {
+        const [y, m] = ym.split('-');
+        const items = groups[ym].map((p) => {
+          const color = CAT_COLOR[p.category] || 'blue';
+          return '<li><a class="arch-item" href="#/post/' + p.id + '">' +
+            '<span class="arch-dot c-' + color + '"></span>' +
+            '<span class="arch-title">' + escapeHtml(p.title) + '</span>' +
+            '<span class="arch-meta">' + escapeHtml(catName(p.category)) + ' · ' + escapeHtml(p.date) + '</span></a></li>';
+        }).join('');
+        return '<div class="arch-group"><h3 class="arch-ym">' + y + ' 年 ' + parseInt(m, 10) + ' 月 <span class="hint">(' + groups[ym].length + ' 篇)</span></h3><ul class="arch-list">' + items + '</ul></div>';
+      }).join('') + '</section>';
+    if (window.Motion && window.Motion.ready) window.Motion.reveal(arch);
+    window.scrollTo(0, 0);
+  }
   function viewCat(id) {
     const c = DATA.site.categories.find((x) => x.id === id);
     if (!c) { viewHome(); return; }
     const list = DATA.posts.filter((p) => p.category === id);
     $('#reader').hidden = true; $('#home').hidden = false;
+    const arch = $('#archive'); if (arch) arch.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '栏目：' + c.name + ' · 夜神月博客';
     showList('栏目：' + c.name, list, false, { icon: c.icon, title: c.name, desc: c.desc, count: list.length });
@@ -331,6 +368,7 @@
   function viewTag(t) {
     const list = DATA.posts.filter((p) => (p.tags || []).includes(t));
     $('#reader').hidden = true; $('#home').hidden = false;
+    const arch = $('#archive'); if (arch) arch.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '标签：#' + t + ' · 夜神月博客';
     showList('标签：#' + t, list, false, { icon: 'wave', title: '#' + t, desc: '包含标签「' + t + '」的文章', count: list.length });
@@ -355,6 +393,7 @@
       <span class="pn-count">第 ${idx + 1} / ${DATA.posts.length} 课</span>
       ${nextPost ? `<a class="btn ghost" href="#/post/${nextPost.id}">下一课 →</a>` : '<span></span>'}
     </nav>`;
+    const archEl = $('#archive'); if (archEl) archEl.hidden = true;
     $('#reader').innerHTML = `
       <div class="article wrap">
         <a class="btn ghost back" href="#/">← 返回列表</a>
@@ -613,6 +652,7 @@
     if (h.startsWith('#/post/')) viewArticle(h.split('/')[2]);
     else if (h.startsWith('#/cat/')) viewCat(h.split('/')[2]);
     else if (h.startsWith('#/tag/')) viewTag(decodeURIComponent(h.split('/')[2]));
+    else if (h.startsWith('#/archive')) viewArchive();
     else viewHome();
   }
 

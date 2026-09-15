@@ -71,7 +71,7 @@
     try {
       const d = await api('GET', '/api/admin');
       SITE = d.site; POSTS = d.posts || [];
-      renderPosts(); renderSiteForm();
+      renderPosts(); renderSiteForm(); renderStats();
       showMsg('#loginMsg', '', true);
     } catch (e) {
       // api 内部 401 已触发 logout，这里无需重复处理
@@ -79,6 +79,44 @@
   }
 
   /* ---- 文章管理 ---- */
+  /* 统计面板：总篇数 / 总字数 / 代码块 / 表格 / 栏目分布 */
+  function renderStats() {
+    const bar = $('#statsBar');
+    if (!bar) return;
+    let words = 0, codes = 0, tables = 0;
+    const byCat = {};
+    for (const p of POSTS) {
+      const c = p.content || '';
+      words += c.length;
+      codes += Math.floor((c.match(/```/g) || []).length / 2);
+      tables += (c.match(/^\|.+\|$/gm) || []).length;
+      byCat[p.category] = (byCat[p.category] || 0) + 1;
+    }
+    const catName = (id) => { const c = (SITE && SITE.cats || []).find((x) => x.id === id); return c ? c.name : id; };
+    const dist = Object.entries(byCat).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `<span class="sb-chip">${escapeHtml(catName(k))} <b>${v}</b></span>`).join('');
+    bar.innerHTML =
+      `<div class="sb-item"><b>${POSTS.length}</b><span>文章</span></div>` +
+      `<div class="sb-item"><b>${words.toLocaleString()}</b><span>累计字数</span></div>` +
+      `<div class="sb-item"><b>${codes}</b><span>代码块</span></div>` +
+      `<div class="sb-item"><b>${tables}</b><span>表格行</span></div>` +
+      `<div class="sb-dist">${dist}</div>`;
+  }
+
+  /* 一键备份：下载整站数据 JSON（site + posts） */
+  function downloadBackup() {
+    const payload = { exportedAt: new Date().toISOString(), site: SITE, posts: POSTS };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'yeshenyue-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    showMsg('#saveMsg', '备份已开始下载', true);
+  }
+
   function renderPosts() {
     $('#postCount').textContent = POSTS.length;
     const list = $('#postList');
@@ -254,6 +292,7 @@
     $('#saveSite').onclick = saveSite;
     $('#addCat').onclick = addCat;
     $('#savePwd').onclick = savePwd;
+    $('#backupBtn').onclick = downloadBackup;
     document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');

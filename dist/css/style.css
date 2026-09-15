@@ -1456,3 +1456,33 @@ p:last-child { margin-bottom: 0; }
 @media print {
   #toast-box { display: none !important; }
 }
+
+/* ============ 19. 成就墙 / 归档时间线 ============ */
+.ach-card { text-align: center; padding: 20px 14px; opacity: .55; filter: grayscale(1); transition: all var(--t-fast) var(--ease); }
+.ach-card.on { opacity: 1; filter: none; box-shadow: var(--sh-md); }
+.ach-card.on:hover { transform: translate(-2px, -2px) rotate(-1deg); box-shadow: var(--sh-lg); }
+.ach-card .ach-icon { font-size: 34px; margin-bottom: 8px; }
+.ach-card h3 { font-size: var(--fs-md); margin: 0 0 4px; }
+.ach-card p { font-size: var(--fs-sm); color: var(--ink-2); margin: 0; }
+.ach-progress { grid-column: 1 / -1; text-align: center; margin-top: 4px; }
+
+.arch-group { margin-bottom: 28px; }
+.arch-ym { font-size: var(--fs-lg); border-bottom: var(--bw) solid var(--line); padding-bottom: 8px; display: flex; align-items: baseline; gap: 8px; }
+.arch-list { list-style: none; padding: 0; margin: 0; }
+.arch-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 8px;
+  border-bottom: 1px dashed var(--line-soft); color: var(--ink);
+  transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.arch-item:hover { transform: translateX(6px); background: var(--page-2, #fff); }
+.arch-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 3px; transform: rotate(45deg); }
+.arch-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arch-meta { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--ink-2); }
+.c-blue { background: var(--blue); } .c-purple { background: var(--purple); }
+.c-cyan { background: var(--cyan); } .c-red { background: var(--red); }
+.c-orange { background: var(--orange); } .c-green { background: var(--green); }
+.c-pink { background: var(--pink); } .c-yellow { background: var(--yellow); }
+
+@media (max-width: 720px) {
+  .arch-meta { display: none; }
+}

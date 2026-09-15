@@ -86,6 +86,23 @@
   document.addEventListener('fx:mega', function () { bump('ysy_mega_n', 5, 'mega5'); });
   document.addEventListener('fx:konami', function () { unlock('konami'); });
 
+  /* 成就墙：渲染到首页容器，解锁高亮 / 未解锁灰显 */
+  function renderWall(sel) {
+    var el = document.querySelector(sel);
+    if (!el) return;
+    var n = LIST.filter(function (a) { return unlocked[a.id]; }).length;
+    el.innerHTML = LIST.map(function (a) {
+      var on = !!unlocked[a.id];
+      return '<div class="card ach-card' + (on ? ' on' : '') + ' reveal" title="' +
+        (on ? a.title : '未解锁 · ' + a.desc) + '">' +
+        '<div class="ach-icon">' + (on ? a.icon : '🔒') + '</div>' +
+        '<h3>' + a.title + '</h3>' +
+        '<p>' + (on ? a.desc : '？？？') + '</p></div>';
+    }).join('') +
+    '<p class="hint ach-progress">已解锁 ' + n + ' / ' + LIST.length +
+    ' · 读完文章、摇骰、触发彩蛋都能解锁新成就</p>';
+  }
+
   window.ACH = {
     ready: true,
     LIST: LIST,
@@ -95,6 +112,7 @@
     bump: bump,
     counters: counters,
     checkRead: checkRead,
-    firstVisit: function () { unlock('first'); }
+    firstVisit: function () { unlock('first'); },
+    renderWall: renderWall
   };
 })();

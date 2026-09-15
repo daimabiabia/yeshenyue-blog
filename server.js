@@ -187,8 +187,10 @@ function loginLockedMinutes(ip) {
 function recordLoginFail(ip) {
   const rec = loginFails.get(ip) || { count: 0, lockedUntil: 0 };
   rec.count += 1;
-  if (rec.count >= LOGIN_MAX_FAILS) { rec.lockedUntil = Date.now() + LOGIN_LOCK_MS; rec.count = 0; }
+  let locked = false;
+  if (rec.count >= LOGIN_MAX_FAILS) { rec.lockedUntil = Date.now() + LOGIN_LOCK_MS; rec.count = 0; locked = true; }
   loginFails.set(ip, rec);
+  return { left: Math.max(0, LOGIN_MAX_FAILS - rec.count), locked };
 }
 
 /* ============ 站点数据 ============ */
@@ -329,8 +331,8 @@ ${items}
       if (lockedMin !== null) return sendJSON(res, 429, { error: `失败次数过多，请约 ${lockedMin} 分钟后再试` });
       const b = await readBody(req);
       if (!verifyPassword(b.password)) {
-        recordLoginFail(ip);
-        return sendJSON(res, 401, { error: '密码错误' });
+        const rf = recordLoginFail(ip);
+        return sendJSON(res, 401, { error: rf.locked ? '失败次数过多，已锁定 15 分钟' : `密码错误（还剩 ${rf.left} 次机会）` });
       }
       loginFails.delete(ip);
       const token = crypto.randomBytes(18).toString('hex');
