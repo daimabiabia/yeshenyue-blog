@@ -359,6 +359,17 @@
     } catch (e) { showMsg('#saveMsg', '创建失败：' + e.message, false); }
   }
 
+  /* ---- 修改网盘访问口令 ---- */
+  async function saveDrivePass() {
+    const np = $('#d_pass').value;
+    if (np.length < 4) { showMsg('#d_passmsg', '口令至少 4 位', false); return; }
+    try {
+      await api('POST', '/api/admin/drive/lock', { newPass: np });
+      $('#d_pass').value = '';
+      showMsg('#d_passmsg', '✓ 口令已修改，所有已解锁访客需重新解锁', true);
+    } catch (e) { showMsg('#d_passmsg', '修改失败：' + e.message, false); }
+  }
+
   /* ---- 初始化 ---- */
   function init() {
     loadTheme();
@@ -376,6 +387,7 @@
     $('#backupBtn').onclick = downloadBackup;
     $('#d_upload').onclick = uploadDrive;
     $('#d_mkdir').onclick = mkdirDrive;
+    $('#d_savepass').onclick = saveDrivePass;
     $('#d_refresh').onclick = () => loadDrive().catch((e) => showMsg('#saveMsg', '刷新失败：' + e.message, false));
     document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));

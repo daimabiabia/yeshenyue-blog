@@ -216,7 +216,51 @@ function detectImageExt(buf) {
 /* ============ 认证 ============ */
 let auth = loadAuth();
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 会话 24 小时过期
-const sessions = new Map(); // token -> 过期时间戳（内存会话，重启后需重新登录）
+const sessions = new Map(); // token -> { exp, kind: 'admin'|'drive' }（内存会话，重启后需重新登录/解锁）
+
+/* 网盘访问口令（独立于后台密码）：data/drive-lock.json，无文件时用默认口令创建 */
+const DRIVE_LOCK_FILE = path.join(DATA_DIR, 'drive-lock.json');
+function loadDriveLock() {
+  if (!fs.existsSync(DRIVE_LOCK_FILE)) {
+    const salt = crypto.randomBytes(8).toString('hex');
+    const pass = process.env.DRIVE_PASS || 'iot-2026'; // 可用环境变量设定初始口令
+    const rec = { salt, hash: sha256(pass + salt) };
+    fs.writeFileSync(DRIVE_LOCK_FILE, JSON.stringify(rec, null, 2));
+    return rec;
+  }
+  return JSON.parse(fs.readFileSync(DRIVE_LOCK_FILE, 'utf8'));
+}
+let driveLock = loadDriveLock();
+function saveDriveLock() { fs.writeFileSync(DRIVE_LOCK_FILE, JSON.stringify(driveLock, null, 2)); }
+
+/* 网盘解锁限速：与后台登录同规则但独立计数，互不影响 */
+const driveFails = new Map(); // ip -> { count, lockedUntil }
+function driveLockedMinutes(ip) {
+  const rec = driveFails.get(ip);
+  if (!rec) return null;
+  if (rec.lockedUntil && Date.now() < rec.lockedUntil) {
+    return Math.max(1, Math.ceil((rec.lockedUntil - Date.now()) / 60000));
+  }
+  if (rec.lockedUntil) driveFails.delete(ip);
+  return null;
+}
+function recordDriveFail(ip) {
+  const rec = driveFails.get(ip) || { count: 0, lockedUntil: 0 };
+  rec.count += 1;
+  let locked = false;
+  if (rec.count >= LOGIN_MAX_FAILS) { rec.lockedUntil = Date.now() + LOGIN_LOCK_MS; rec.count = 0; locked = true; }
+  driveFails.set(ip, rec);
+  return { left: Math.max(0, LOGIN_MAX_FAILS - rec.count), locked };
+}
+/* 校验网盘访问 token：header 优先，其次 query（供 <a href> 下载使用）；admin token 天然放行 */
+function checkDriveToken(req, url) {
+  const q = url.searchParams.get('token');
+  if (q) {
+    const rec = sessions.get(q);
+    if (rec && Date.now() <= rec.exp) return true;
+  }
+  return checkToken(req);
+}
 
 function loadAuth() {
   if (!fs.existsSync(AUTH_FILE)) {
@@ -233,14 +277,14 @@ function verifyPassword(pass) { return sha256(String(pass) + auth.salt) === auth
 function checkToken(req) {
   const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   if (!m) return false;
-  const exp = sessions.get(m[1]);
-  if (!exp) return false;
-  if (Date.now() > exp) { sessions.delete(m[1]); return false; } // 过期即吊销
+  const rec = sessions.get(m[1]);
+  if (!rec) return false;
+  if (Date.now() > rec.exp) { sessions.delete(m[1]); return false; } // 过期即吊销
   return true;
 }
 function pruneSessions() {
   const now = Date.now();
-  for (const [t, exp] of sessions) if (now > exp) sessions.delete(t);
+  for (const [t, rec] of sessions) if (now > rec.exp) sessions.delete(t);
 }
 
 /* 登录限速：同一 IP 连续失败 5 次锁定 15 分钟（内存态，重启即清零） */
@@ -410,8 +454,9 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { comment: item });
     }
 
-    /* ---- 资源网盘：文件树（访客可见） ---- */
+    /* ---- 资源网盘：文件树（需网盘口令解锁，admin token 放行） ---- */
     if (method === 'GET' && pathname === '/api/drive') {
+      if (!checkDriveToken(req, url)) return sendJSON(res, 401, { error: '网盘已加密，请先解锁' });
       const files = walkDrive(DRIVE_DIR, '');
       const fileCount = files.filter((f) => f.type === 'file').length;
       const dirCount = files.filter((f) => f.type === 'dir').length;
@@ -419,8 +464,9 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { files, fileCount, dirCount, totalSize, downloads: driveDl });
     }
 
-    /* ---- 资源网盘：文本在线预览（仅白名单文本类型） ---- */
+    /* ---- 资源网盘：文本在线预览（仅白名单文本类型，需解锁） ---- */
     if (method === 'GET' && pathname === '/api/drive/raw') {
+      if (!checkDriveToken(req, url)) return sendJSON(res, 401, { error: '网盘已加密，请先解锁' });
       const target = driveSafe(url.searchParams.get('file'));
       if (!target) return sendJSON(res, 400, { error: '非法路径' });
       const ext = path.extname(target).toLowerCase();
@@ -433,8 +479,9 @@ const server = http.createServer(async (req, res) => {
       return res.end(buf);
     }
 
-    /* ---- 资源网盘：下载（attachment，防路径穿越） ---- */
+    /* ---- 资源网盘：下载（attachment，防路径穿越，需解锁） ---- */
     if (method === 'GET' && pathname === '/api/drive/download') {
+      if (!checkDriveToken(req, url)) return sendJSON(res, 401, { error: '网盘已加密，请先解锁' });
       const target = driveSafe(url.searchParams.get('file'));
       if (!target) return sendJSON(res, 400, { error: '非法路径' });
       const err = driveCheck(target);
@@ -501,7 +548,24 @@ ${items}
       loginFails.delete(ip);
       const token = crypto.randomBytes(18).toString('hex');
       pruneSessions();
-      sessions.set(token, Date.now() + SESSION_TTL);
+      sessions.set(token, { exp: Date.now() + SESSION_TTL, kind: 'admin' });
+      return sendJSON(res, 200, { token });
+    }
+
+    /* ---- 网盘解锁：口令换访问 token（带独立限速） ---- */
+    if (method === 'POST' && pathname === '/api/drive/unlock') {
+      const ip = req.socket.remoteAddress || 'unknown';
+      const lockedMin = driveLockedMinutes(ip);
+      if (lockedMin !== null) return sendJSON(res, 429, { error: `尝试次数过多，请约 ${lockedMin} 分钟后再试` });
+      const b = await readBody(req);
+      if (sha256(String(b.pass || '') + driveLock.salt) !== driveLock.hash) {
+        const rf = recordDriveFail(ip);
+        return sendJSON(res, 401, { error: rf.locked ? '失败次数过多，已锁定 15 分钟' : `口令错误（还剩 ${rf.left} 次机会）` });
+      }
+      driveFails.delete(ip);
+      const token = crypto.randomBytes(18).toString('hex');
+      pruneSessions();
+      sessions.set(token, { exp: Date.now() + SESSION_TTL, kind: 'drive' });
       return sendJSON(res, 200, { token });
     }
 
@@ -643,6 +707,19 @@ ${items}
         if (!target || target === DRIVE_DIR) return sendJSON(res, 400, { error: '非法路径' });
         if (!fs.existsSync(target)) return sendJSON(res, 404, { error: '不存在' });
         fs.rmSync(target, { recursive: true, force: true });
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      /* ---- 资源网盘管理：修改访问口令（改后吊销全部网盘 token，需重新解锁） ---- */
+      if (method === 'POST' && pathname === '/api/admin/drive/lock') {
+        const b = await readBody(req);
+        const np = String(b.newPass || '');
+        if (np.length < 4) return sendJSON(res, 400, { error: '口令至少 4 位' });
+        if (np.length > 64) return sendJSON(res, 400, { error: '口令过长（上限 64 位）' });
+        driveLock = { salt: crypto.randomBytes(8).toString('hex'), hash: '' };
+        driveLock.hash = sha256(np + driveLock.salt);
+        saveDriveLock();
+        for (const [t, rec] of sessions) if (rec.kind === 'drive') sessions.delete(t);
         return sendJSON(res, 200, { ok: true });
       }
 

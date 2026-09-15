@@ -149,7 +149,16 @@
           <input id="d_newdir" placeholder="新建目录名（如 08-调试笔记）" style="flex:1" />
           <button class="btn mini alt" id="d_mkdir" type="button">+ 新建目录</button>
         </div>
-        <p class="hint">前台入口：导航栏「网盘」或直接访问 <a href="/#/drive" target="_blank" rel="noopener">/#/drive</a></p>
+        <p class="hint">前台入口：导航栏「网盘」或直接访问 <a href="/#/drive" target="_blank" rel="noopener">/#/drive</a> · 访客需输入访问口令解锁</p>
+      </div>
+      <div class="card" style="padding:16px;margin-bottom:16px;border-left:6px solid #d97706">
+        <b>🔒 网盘访问口令</b>
+        <p class="hint">修改后所有已解锁访客立即失效，需用新口令重新解锁。初始口令：iot-2026</p>
+        <div class="row">
+          <input type="password" id="d_pass" placeholder="新访问口令（至少 4 位）" style="flex:1" autocomplete="new-password" />
+          <button class="btn mini" id="d_savepass" type="button">修改口令</button>
+        </div>
+        <p class="hint" id="d_passmsg"></p>
       </div>
       <div class="row" style="margin-bottom:10px">
         <b>网盘文件</b>

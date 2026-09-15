@@ -417,11 +417,12 @@
   }
 
   /* ---- 资源网盘视图：目录树 + 文件列表 + 搜索 + 在线预览（访客可见可下载） ---- */
-  const DRIVE = { files: null, meta: null, dir: '', q: '', sort: { key: '', dir: 1 }, cur: '' };
+  const DRIVE = { files: null, meta: null, dir: '', q: '', sort: { key: '', dir: 1 }, cur: '', token: localStorage.getItem('driveToken') || '' };
   const DRIVE_TEXT = ['.md', '.txt', '.json', '.csv', '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py'];
   const DRIVE_IMG = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
-  const driveURL = (f, act) => '/' + act + '?file=' + encodeURIComponent(f);
+  const driveURL = (f, act) => '/' + act + '?file=' + encodeURIComponent(f) + (DRIVE.token ? '&token=' + encodeURIComponent(DRIVE.token) : '');
+  const reqDrive = () => (DRIVE.token ? { headers: { Authorization: 'Bearer ' + DRIVE.token } } : {});
   function driveIcon(ext) {
     if (ext === '.md' || ext === '.txt') return '📝';
     if (ext === '.pdf') return '📕';
@@ -447,11 +448,12 @@
     el.hidden = false;
     document.title = '资源网盘 · 夜神月博客';
     resetSeo();
-    if (!DRIVE.files) {
+    if (true) { // 每次进入都实时校验 token（口令被改后立即反映）
       el.innerHTML = '<section class="sec wrap"><div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2></div><p class="hint">正在装载文件索引…</p></section>';
       try {
-        const r = await fetch('/api/drive').catch(() => null);
-        if (!r || !r.ok) throw new Error('bad');
+        const r = await fetch('/api/drive', reqDrive());
+        if (r.status === 401) { DRIVE.files = null; DRIVE.token = ''; localStorage.removeItem('driveToken'); renderDriveLocked(); return; }
+        if (!r.ok) throw new Error('bad');
         const j = await r.json();
         DRIVE.files = j.files || [];
         DRIVE.meta = j;
@@ -462,6 +464,49 @@
     }
     renderDrive();
     window.scrollTo(0, 0);
+  }
+  /* 网盘解锁界面（终端风） */
+  function renderDriveLocked(msg) {
+    const el = $('#drive');
+    document.title = '网盘已加密 · 夜神月博客';
+    el.innerHTML = `<section class="sec wrap">
+      <div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2></div>
+      <div class="drive-lock">
+        <div class="lock-term mono">
+          <div class="lock-title">🔒 DRIVE LOCKED</div>
+          <p class="hint">该网盘已加密。输入访问口令后可浏览、在线预览与下载全部资料。</p>
+          <div class="lock-row">
+            <span class="lock-prompt">$</span>
+            <input id="drivePass" type="password" placeholder="访问口令" autocomplete="off" aria-label="网盘访问口令" />
+            <button id="driveUnlock" class="btn mini">解锁 →</button>
+          </div>
+          <p class="hint lock-msg" id="driveLockMsg">${escapeHtml(msg || '等待输入…')}</p>
+        </div>
+      </div></section>`;
+    const inp = $('#drivePass');
+    const go = () => unlockDrive(inp.value);
+    $('#driveUnlock').addEventListener('click', go);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    setTimeout(() => inp.focus(), 60);
+  }
+  async function unlockDrive(pass) {
+    const msg = $('#driveLockMsg');
+    if (msg) msg.textContent = '校验中…';
+    try {
+      const r = await fetch('/api/drive/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { if (msg) msg.textContent = j.error || '口令错误'; return; }
+      DRIVE.token = j.token;
+      localStorage.setItem('driveToken', j.token);
+      DRIVE.files = null; DRIVE.dir = ''; DRIVE.q = ''; DRIVE.sort = { key: '', dir: 1 };
+      if (window.SFX && window.SFX.coin) window.SFX.coin();
+      viewDrive();
+    } catch (e) { if (msg) msg.textContent = '网络异常，请重试'; }
+  }
+  function relockDrive() {
+    DRIVE.token = ''; DRIVE.files = null; DRIVE.cur = '';
+    localStorage.removeItem('driveToken');
+    renderDriveLocked('已重新上锁。');
   }
   function renderDrive() {
     const el = $('#drive');
@@ -510,7 +555,7 @@
     el.innerHTML = `<section class="sec wrap">
       <div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2>
         <span class="search-term mono" style="margin-left:auto;max-width:220px"><input id="driveSearch" placeholder="> 搜索文件…" value="${escapeAttr(DRIVE.q)}" aria-label="搜索文件" /></span></div>
-      <p class="hint" style="margin-bottom:16px">共 ${m.fileCount || 0} 个文件 · ${m.dirCount || 0} 个目录 · ${fmtSize(m.totalSize || 0)} — 点击文件名在线预览，⬇ 直接下载</p>
+      <p class="hint" style="margin-bottom:16px">共 ${m.fileCount || 0} 个文件 · ${m.dirCount || 0} 个目录 · ${fmtSize(m.totalSize || 0)} — 点击文件名在线预览，⬇ 直接下载 · <a id="driveReLock" class="d-relock mono" title="清除本机解锁状态">🔒 重新上锁</a></p>
       <div class="drive-layout">
         <aside class="drive-tree">
           <a class="dtree-item mono${DRIVE.dir === '' ? ' on' : ''}" data-dir="">▸ 根目录/</a>
@@ -540,6 +585,8 @@
     if (si) {
       si.addEventListener('input', () => { DRIVE.q = si.value.trim().toLowerCase(); renderDrive(); const n = $('#driveSearch'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
     }
+    const rl = $('#driveReLock');
+    if (rl) rl.addEventListener('click', relockDrive);
   }
   /* 在线预览弹层：md 渲染 / 文本直出 / 图片展示，其余引导下载 */
   async function openDrivePreview(fpath, ext) {
@@ -557,6 +604,7 @@
     }
     try {
       const r = await fetch(driveURL(fpath, 'api/drive/raw'));
+      if (r.status === 401) { body.innerHTML = '<p class="hint">口令已失效，请返回网盘页重新解锁。</p>'; return; }
       if (!r.ok) throw new Error('bad');
       const text = await r.text();
       if (ext === '.md' && window.MD) {
