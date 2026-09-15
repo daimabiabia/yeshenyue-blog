@@ -1806,3 +1806,27 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .drow, .dtree-item { transition: none; }
 }
+
+/* -- 22.5 v2 打磨：目录文件数 / 排序表头 / 搜索路径 / 下载热度 -- */
+.dtree-n {
+  font-style: normal; font-size: 10.5px; font-weight: 700;
+  margin-left: 4px; padding: 0 5px; border: 1.5px solid var(--line);
+  border-radius: 6px; background: var(--page-2); color: var(--ink); opacity: .6;
+}
+.dtree-item.on .dtree-n { opacity: 1; background: var(--page-2); }
+.th-sort { cursor: pointer; user-select: none; }
+.th-sort:hover { background: var(--lime-soft, var(--page-2)); }
+.th-sort:active { transform: translateY(1px); }
+.d-sub {
+  display: block; font-size: 11px; margin-top: 1px;
+  color: var(--ink); opacity: .5; word-break: break-all;
+}
+.d-dl {
+  margin-left: 8px; font-size: 12px; font-weight: 700;
+  color: var(--ink); opacity: .55;
+}
+.dp-head .btn.mini { flex: none; }
+@media (max-width: 860px) {
+  .dp-head { flex-wrap: wrap; }
+  .d-dl { display: none; }
+}

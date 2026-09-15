@@ -417,7 +417,7 @@
   }
 
   /* ---- 资源网盘视图：目录树 + 文件列表 + 搜索 + 在线预览（访客可见可下载） ---- */
-  const DRIVE = { files: null, meta: null, dir: '', q: '' };
+  const DRIVE = { files: null, meta: null, dir: '', q: '', sort: { key: '', dir: 1 }, cur: '' };
   const DRIVE_TEXT = ['.md', '.txt', '.json', '.csv', '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py'];
   const DRIVE_IMG = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
@@ -466,10 +466,11 @@
   function renderDrive() {
     const el = $('#drive');
     const m = DRIVE.meta || {};
-    /* 目录树：按路径深度缩进 */
+    /* 目录树：按路径深度缩进，右侧角标为该目录递归文件数 */
+    const dirCount = (p) => DRIVE.files.filter((f) => f.type === 'file' && f.path.startsWith(p + '/')).length;
     const tree = (DRIVE.files || []).filter((f) => f.type === 'dir').map((d) => {
       const depth = d.path.split('/').length - 1;
-      return `<a class="dtree-item mono${DRIVE.dir === d.path ? ' on' : ''}" data-dir="${escapeAttr(d.path)}" style="padding-left:${10 + depth * 18}px" title="${escapeAttr(d.path)}">▸ ${escapeHtml(d.name)}/</a>`;
+      return `<a class="dtree-item mono${DRIVE.dir === d.path ? ' on' : ''}" data-dir="${escapeAttr(d.path)}" style="padding-left:${10 + depth * 18}px" title="${escapeAttr(d.path)}">▸ ${escapeHtml(d.name)}/ <i class="dtree-n">${dirCount(d.path)}</i></a>`;
     }).join('');
     /* 面包屑 */
     const segs = DRIVE.dir ? DRIVE.dir.split('/') : [];
@@ -478,25 +479,33 @@
       acc = acc ? acc + '/' + s : s;
       return ` / <a class="dcrumb" data-dir="${escapeAttr(acc)}">${escapeHtml(s)}</a>`;
     }).join('');
-    /* 文件行：搜索时全局过滤，否则列当前目录直属子项 */
+    /* 文件行：搜索时全局过滤（含路径），否则列当前目录直属子项；表头可点击排序 */
     let rows;
+    const sArrow = (k) => (DRIVE.sort.key === k ? (DRIVE.sort.dir === 1 ? ' ▲' : ' ▼') : '');
     if (DRIVE.q) {
-      rows = DRIVE.files.filter((f) => f.type === 'file' && f.name.toLowerCase().includes(DRIVE.q));
+      rows = DRIVE.files.filter((f) => f.type === 'file' && (f.name.toLowerCase().includes(DRIVE.q) || f.path.toLowerCase().includes(DRIVE.q)));
       rows.sort((a, b) => a.path.localeCompare(b.path));
     } else {
-      rows = driveChildren(DRIVE.dir).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
+      rows = driveChildren(DRIVE.dir);
+      const k = DRIVE.sort.key, sgn = DRIVE.sort.dir;
+      if (k === 'size') rows.sort((a, b) => (a.type === 'dir' ? -1 : b.type === 'dir' ? 1 : sgn * (a.size - b.size)));
+      else if (k === 'date') rows.sort((a, b) => (a.type === 'dir' ? -1 : b.type === 'dir' ? 1 : sgn * ((a.mtime || 0) - (b.mtime || 0))));
+      else rows.sort((a, b) => (a.type === b.type ? sgn * a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
     }
+    const dls = DRIVE.meta && DRIVE.meta.downloads ? DRIVE.meta.downloads : {};
     const rowHtml = rows.map((f) => {
       if (f.type === 'dir') {
         return `<tr class="drow is-dir" data-dir="${escapeAttr(f.path)}">
           <td class="d-name">📁 <b>${escapeHtml(f.name)}/</b></td><td class="d-size mono">—</td><td class="d-date mono">—</td><td class="d-act mono">进入 →</td></tr>`;
       }
       const canPreview = DRIVE_TEXT.includes(f.ext);
+      const sub = DRIVE.q && f.path.includes('/') ? `<span class="d-sub mono">${escapeHtml(f.path.slice(0, f.path.lastIndexOf('/')))}/</span>` : '';
+      const dl = dls[f.path] || 0;
       return `<tr class="drow${canPreview ? ' is-text' : ''}" data-file="${escapeAttr(f.path)}" data-ext="${escapeAttr(f.ext)}">
-        <td class="d-name">${driveIcon(f.ext)} ${canPreview ? `<b class="d-open">${escapeHtml(f.name)}</b>` : escapeHtml(f.name)}</td>
+        <td class="d-name">${driveIcon(f.ext)} ${canPreview ? `<b class="d-open">${escapeHtml(f.name)}</b>` : escapeHtml(f.name)}${sub}</td>
         <td class="d-size mono">${fmtSize(f.size)}</td>
         <td class="d-date mono">${f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : ''}</td>
-        <td class="d-act"><a class="btn mini alt" href="${driveURL(f.path, 'api/drive/download')}" download>⬇ 下载</a></td></tr>`;
+        <td class="d-act"><a class="btn mini alt" href="${driveURL(f.path, 'api/drive/download')}" download>⬇ 下载</a>${dl ? `<span class="d-dl mono" title="已被下载 ${dl} 次">×${dl}</span>` : ''}</td></tr>`;
     }).join('') || '<tr><td colspan="4" class="hint" style="padding:18px">空目录，或没有匹配的文件。</td></tr>';
     el.innerHTML = `<section class="sec wrap">
       <div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2>
@@ -509,7 +518,7 @@
         </aside>
         <div class="drive-main">
           <div class="d-crumbs mono">${crumbs}</div>
-          <table class="drive-table"><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead><tbody>${rowHtml}</tbody></table>
+          <table class="drive-table"><thead><tr><th class="th-sort" data-sort="name" title="点击排序">文件名${sArrow('name')}</th><th class="th-sort" data-sort="size" title="点击排序">大小${sArrow('size')}</th><th class="th-sort" data-sort="date" title="点击排序">修改时间${sArrow('date')}</th><th>操作</th></tr></thead><tbody>${rowHtml}</tbody></table>
         </div>
       </div></section>`;
     /* 事件绑定 */
@@ -520,6 +529,13 @@
       if (e.target.closest('a')) return; // 点下载按钮不触发预览
       openDrivePreview(tr.dataset.file, tr.dataset.ext);
     }));
+    el.querySelectorAll('.th-sort').forEach((th) => th.addEventListener('click', () => {
+      const k = th.dataset.sort;
+      if (DRIVE.sort.key === k) DRIVE.sort.dir = -DRIVE.sort.dir;
+      else { DRIVE.sort.key = k; DRIVE.sort.dir = 1; }
+      renderDrive();
+      const si2 = $('#driveSearch'); if (si2) si2.value = DRIVE.q;
+    }));
     const si = $('#driveSearch');
     if (si) {
       si.addEventListener('input', () => { DRIVE.q = si.value.trim().toLowerCase(); renderDrive(); const n = $('#driveSearch'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
@@ -529,6 +545,7 @@
   async function openDrivePreview(fpath, ext) {
     const box = $('#drivePreview');
     if (!box) return;
+    DRIVE.cur = fpath;
     $('#dpPath').textContent = '~/drive/' + fpath;
     $('#dpDownload').href = driveURL(fpath, 'api/drive/download');
     const body = $('#dpBody');
@@ -1010,6 +1027,28 @@
       if (!m) return;
       m.querySelector('.cmdk-mask').addEventListener('click', () => { m.hidden = true; CMDK.open = false; });
     });
+    /* 网盘预览弹层：遮罩/ESC 触点关闭 + 复制直链 */
+    const dpBox = $('#drivePreview');
+    if (dpBox) {
+      dpBox.querySelector('.cmdk-mask').addEventListener('click', closeDrivePreview);
+      const dc = $('#dpClose');
+      if (dc) dc.addEventListener('click', closeDrivePreview);
+      const cp = $('#dpCopy');
+      if (cp) cp.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!DRIVE.cur) return;
+        const link = location.origin + driveURL(DRIVE.cur, 'api/drive/download');
+        const done = () => { cp.textContent = '✓ 已复制'; setTimeout(() => { cp.textContent = '🔗 复制直链'; }, 1400); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link).then(done).catch(() => {});
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = link; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); done(); } catch (err) {}
+          ta.remove();
+        }
+      });
+    }
     const ci = $('#cmdkInput');
     if (ci) {
       ci.addEventListener('input', renderCmdk);

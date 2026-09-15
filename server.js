@@ -42,6 +42,8 @@ const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex'
 function loadJSON(file, dflt) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return dflt; } }
 function saveJSON(file, val) { try { fs.writeFileSync(file, JSON.stringify(val)); } catch (e) {} }
 const likes = loadJSON(LIKE_FILE, {});
+const DRIVE_DL_FILE = path.join(DATA_DIR, 'drive-downloads.json');
+const driveDl = loadJSON(DRIVE_DL_FILE, {}); // { 相对路径: 下载次数 }
 let comments = loadJSON(COMMENT_FILE, []);
 const lastCommentAt = new Map(); /* ip -> 上次留言时间戳，留言冷却用 */
 
@@ -194,7 +196,8 @@ function contentDisposition(name) {
 }
 
 /* 图片魔数白名单：上传文件必须匹配真实图片格式签名，扩展名由检测结果决定，
- * 杜绝把脚本/HTML 伪装成图片上传后被同源引用执行的风险。 */const IMG_MAGIC = [
+ * 杜绝把脚本/HTML 伪装成图片上传后被同源引用执行的风险。 */
+const IMG_MAGIC = [
   { ext: '.png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }, // PNG 签名
   { ext: '.jpg', bytes: [0xff, 0xd8, 0xff] },                               // JPEG SOI
   { ext: '.gif', bytes: [0x47, 0x49, 0x46, 0x38] },                         // GIF8
@@ -413,7 +416,7 @@ const server = http.createServer(async (req, res) => {
       const fileCount = files.filter((f) => f.type === 'file').length;
       const dirCount = files.filter((f) => f.type === 'dir').length;
       const totalSize = files.reduce((s, f) => s + (f.type === 'file' ? f.size : 0), 0);
-      return sendJSON(res, 200, { files, fileCount, dirCount, totalSize });
+      return sendJSON(res, 200, { files, fileCount, dirCount, totalSize, downloads: driveDl });
     }
 
     /* ---- 资源网盘：文本在线预览（仅白名单文本类型） ---- */
@@ -440,6 +443,10 @@ const server = http.createServer(async (req, res) => {
         return res.end(err);
       }
       const st = fs.statSync(target);
+      /* 下载计数（相对路径为 key，落盘持久化） */
+      const rel = path.relative(DRIVE_DIR, target).replace(/\\/g, '/');
+      driveDl[rel] = (driveDl[rel] || 0) + 1;
+      saveJSON(DRIVE_DL_FILE, driveDl);
       res.writeHead(200, Object.assign({
         'Content-Type': 'application/octet-stream',
         'Content-Length': st.size,
