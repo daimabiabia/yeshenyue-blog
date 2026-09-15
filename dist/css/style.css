@@ -1570,3 +1570,168 @@ p:last-child { margin-bottom: 0; }
   .pick-card { padding: 22px 18px 18px 22px; }
 }
 @media print { .cmt, #hot-sec, #pick-sec, #fav-sec { display: none !important; } }
+
+/* ============================================================
+   21. 技术感硬化层 TECH HARDENING
+   蓝图网格 / 终端元素 / mono 强化 / CRT 质感 / 滚动条
+   ============================================================ */
+
+/* ---- 21.1 全站蓝图网格底纹（叠加在纸纹噪点之上） ---- */
+body {
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 30px 30px, 30px 30px, 140px 140px;
+  background-attachment: fixed, fixed, fixed;
+}
+[data-theme="dark"] body {
+  background-image:
+    linear-gradient(rgba(196, 255, 61, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(196, 255, 61, .045) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* ---- 21.2 终端滚动条：细轨 + 方块滑块 ---- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--page); border-left: 1px solid var(--line-soft); }
+::-webkit-scrollbar-thumb {
+  background: var(--ink-3); border: 2px solid var(--page);
+  border-radius: 0; transform: rotate(0);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3A3A3E; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--lime); }
+
+/* ---- 21.3 选区：终端荧光绿 ---- */
+::selection { background: var(--lime); color: #0A0A0A; }
+
+/* ---- 21.4 区块标题终端化：kicker 加 [ ] 括号、h2 加 // 前缀 ---- */
+.sec-head .kicker::before { content: '[ '; color: var(--ink-4); }
+.sec-head .kicker::after { content: ' ]'; color: var(--ink-4); }
+.sec-head h2::before {
+  content: '//';
+  font-family: var(--font-mono); font-weight: 800;
+  color: var(--line-soft, rgba(10,10,10,.14));
+  margin-right: 10px;
+  -webkit-text-stroke: 0;
+}
+[data-theme="dark"] .sec-head h2::before { color: rgba(196, 255, 61, .3); }
+.sec-head h2 { display: flex; align-items: baseline; }
+
+/* ---- 21.5 文章页：h1 井号前缀 + 文件路径条 ---- */
+.article h1::before {
+  content: '#';
+  font-family: var(--font-mono);
+  color: var(--ink-4);
+  margin-right: 12px;
+  font-size: .72em;
+  vertical-align: baseline;
+}
+.file-path {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12.5px; color: var(--ink-3);
+  background: var(--page-2, #fff);
+  border: var(--bw-hair) solid var(--line);
+  border-bottom-width: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 8px 14px; width: fit-content; max-width: 100%;
+  overflow: hidden; white-space: nowrap;
+  box-shadow: none;
+}
+[data-theme="dark"] .file-path { background: var(--page-3); }
+.fp-dots { display: inline-flex; gap: 4px; }
+.fp-dots i {
+  width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg);
+  background: var(--ink-4); display: inline-block;
+}
+.fp-dots i:nth-child(1) { background: var(--red); }
+.fp-dots i:nth-child(2) { background: var(--yellow); }
+.fp-dots i:nth-child(3) { background: var(--ok); }
+.fp-branch {
+  margin-left: 6px; font-size: 10.5px; font-weight: 700;
+  color: #0A0A0A; background: var(--lime);
+  padding: 1px 8px; border: 1.5px solid var(--line); border-radius: 999px;
+}
+[data-theme="dark"] .fp-branch { color: #0A0A0A; }
+
+/* ---- 21.6 搜索框终端化：> 前缀 ---- */
+.search-term {
+  display: inline-flex; align-items: center;
+  background: var(--page-2, #fff);
+  border: var(--bw-hair) solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: var(--sh-xs);
+  padding: 0 10px;
+}
+.search-term::before {
+  content: '>';
+  font-family: var(--font-mono); font-weight: 800;
+  color: var(--lime); margin-right: 8px;
+  background: var(--ink); padding: 1px 5px; border-radius: 4px;
+  font-size: 12px;
+}
+[data-theme="dark"] .search-term::before { color: #0A0A0A; }
+.search-term input {
+  border: 0; outline: 0; background: transparent;
+  font: 500 13.5px var(--font-sans); color: var(--ink);
+  padding: 9px 0; width: 100%; min-width: 0;
+}
+
+/* ---- 21.7 页脚终端行：$ exit 0 + 闪烁光标 ---- */
+.term-exit {
+  margin-top: 10px; font-size: 12px; color: var(--ink-3);
+  letter-spacing: .02em;
+}
+.term-caret {
+  display: inline-block; margin-left: 6px;
+  color: var(--lime);
+  animation: caret-blink 1.06s steps(2, start) infinite;
+}
+@keyframes caret-blink { to { visibility: hidden; } }
+
+/* ---- 21.8 深色主题：CRT 扫描线 + 荧光数字 ---- */
+[data-theme="dark"] body::after {
+  content: ''; position: fixed; inset: 0; z-index: 999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, .025) 0px,
+    rgba(255, 255, 255, .025) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: overlay;
+}
+[data-theme="dark"] .num,
+[data-theme="dark"] .hot-rank,
+[data-theme="dark"] .prog .mono {
+  text-shadow: 0 0 14px rgba(196, 255, 61, .45);
+}
+[data-theme="dark"] .sec-head .kicker { color: var(--lime); }
+[data-theme="dark"] .sec-head .kicker::before,
+[data-theme="dark"] .sec-head .kicker::after { color: rgba(196, 255, 61, .5); }
+
+/* ---- 21.9 meta/chips 全面等宽化（数据感） ---- */
+.meta .cat-chip, .meta .lv-badge, .meta .rt, .meta .word-chip,
+.meta > span, .hot-n, .cmt-head .mono, .arch-meta .mono,
+.foot-card .foot-meta, .pn-count {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+/* ---- 21.10 TOC 标题终端化 ---- */
+.toc .toc-t::before { content: '> '; color: var(--lime); font-family: var(--font-mono); }
+[data-theme="dark"] .toc .toc-t::before { color: var(--lime); }
+
+/* ---- 21.11 降级：减少动效/打印 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .term-caret { animation: none; }
+  [data-theme="dark"] body::after { display: none; }
+}
+@media print {
+  .file-path, .term-exit, .search-term::before { display: none !important; }
+}
+@media (max-width: 720px) {
+  .file-path { font-size: 11px; padding: 6px 10px; }
+  .fp-branch { display: none; }
+}

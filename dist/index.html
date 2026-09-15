@@ -97,7 +97,7 @@
         <div class="sec-head">
           <span class="kicker">POSTS</span>
           <h2 id="postTitle">全部文章</h2>
-          <input id="searchInput" placeholder="🔍 搜索文章…" aria-label="搜索文章" style="margin-left:auto;max-width:220px;padding:8px 12px" />
+          <span class="search-term mono" style="margin-left:auto;max-width:220px"><input id="searchInput" placeholder="搜索文章…" aria-label="搜索文章" /></span>
         </div>
         <div id="listHead" class="list-head" hidden></div>
         <div class="posts" id="posts"></div>
@@ -145,6 +145,7 @@
         <a href="/rss.xml" target="_blank" rel="noopener">rss</a> ·
         <a id="footAdmin" href="/admin">后台管理</a>
       </div>
+      <div class="term-exit mono" aria-hidden="true">$ cat /dev/blog — 96 lessons · exit 0<span class="term-caret">█</span></div>
     </div>
   </footer>
 

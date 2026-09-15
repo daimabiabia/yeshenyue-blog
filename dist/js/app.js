@@ -468,6 +468,7 @@
           <button type="button" class="copy-link like-btn" id="likeBtn" title="给这篇点个赞">♡ …</button>
           <button type="button" class="copy-link star-btn" id="starBtn" title="收藏本文">☆ 收藏</button>
         </div>
+        <div class="file-path mono" aria-hidden="true"><span class="fp-dots"><i></i><i></i><i></i></span>~/blog/${escapeHtml(p.category)}/${escapeHtml(p.slug || p.id)}.md<span class="fp-branch">main</span></div>
         <h1>${escapeHtml(p.title)}</h1>
         <div class="md">${MD.render(stripLeadingH1(p.content))}</div>
         <div class="meta" style="margin-top:24px">${(p.tags || []).map((t) => `<a class="ptag" href="#/tag/${encodeURIComponent(t)}">#${escapeHtml(t)}</a>`).join('')}</div>
