@@ -264,7 +264,7 @@
     $('#links').innerHTML = (s.friendLinks || []).map((l, i) =>
       `<a class="card ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url)}" target="_blank" rel="noopener"><h3>${escapeHtml(l.name)}</h3><p>${escapeHtml(l.desc || '')}</p></a>`).join('')
       || '<p class="hint">暂无友链，可在后台「站点设置」里添加。</p>';
-    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档']];
+    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘']];
     if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
     $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
@@ -357,6 +357,7 @@
     $('#reader').hidden = true;
     const arch = $('#archive');
     if (arch) arch.hidden = true;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
     $('#home').hidden = false;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '夜神月 · 物联网技术博客';
@@ -387,6 +388,7 @@
     if (!arch) { viewHome(); return; }
     $('#home').hidden = true;
     arch.hidden = false;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '归档 · 夜神月博客';
     resetSeo();
@@ -413,12 +415,150 @@
     if (window.Motion && window.Motion.ready) window.Motion.reveal(arch);
     window.scrollTo(0, 0);
   }
+
+  /* ---- 资源网盘视图：目录树 + 文件列表 + 搜索 + 在线预览（访客可见可下载） ---- */
+  const DRIVE = { files: null, meta: null, dir: '', q: '' };
+  const DRIVE_TEXT = ['.md', '.txt', '.json', '.csv', '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py'];
+  const DRIVE_IMG = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+  const driveURL = (f, act) => '/' + act + '?file=' + encodeURIComponent(f);
+  function driveIcon(ext) {
+    if (ext === '.md' || ext === '.txt') return '📝';
+    if (ext === '.pdf') return '📕';
+    if (ext === '.zip' || ext === '.7z') return '🗜';
+    if (DRIVE_IMG.includes(ext)) return '🖼';
+    if (['.c', '.h', '.cpp', '.hpp', '.py', '.ino'].includes(ext)) return '📄';
+    if (['.hex', '.bin', '.elf'].includes(ext)) return '⚙';
+    return '📦';
+  }
+  function driveChildren(dir) {
+    const prefix = dir ? dir + '/' : '';
+    return DRIVE.files.filter((f) => {
+      if (f.path === dir || !f.path.startsWith(prefix)) return false;
+      return !f.path.slice(prefix.length).includes('/');
+    });
+  }
+  async function viewDrive() {
+    const el = $('#drive');
+    $('#reader').hidden = true;
+    $('#home').hidden = true;
+    const arch = $('#archive'); if (arch) arch.hidden = true;
+    if ($('#readbar')) $('#readbar').hidden = true;
+    el.hidden = false;
+    document.title = '资源网盘 · 夜神月博客';
+    resetSeo();
+    if (!DRIVE.files) {
+      el.innerHTML = '<section class="sec wrap"><div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2></div><p class="hint">正在装载文件索引…</p></section>';
+      try {
+        const r = await fetch('/api/drive').catch(() => null);
+        if (!r || !r.ok) throw new Error('bad');
+        const j = await r.json();
+        DRIVE.files = j.files || [];
+        DRIVE.meta = j;
+      } catch (e) {
+        el.innerHTML = '<section class="sec wrap"><div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2></div><p class="hint">网盘加载失败，请确认服务器已启动。</p></section>';
+        return;
+      }
+    }
+    renderDrive();
+    window.scrollTo(0, 0);
+  }
+  function renderDrive() {
+    const el = $('#drive');
+    const m = DRIVE.meta || {};
+    /* 目录树：按路径深度缩进 */
+    const tree = (DRIVE.files || []).filter((f) => f.type === 'dir').map((d) => {
+      const depth = d.path.split('/').length - 1;
+      return `<a class="dtree-item mono${DRIVE.dir === d.path ? ' on' : ''}" data-dir="${escapeAttr(d.path)}" style="padding-left:${10 + depth * 18}px" title="${escapeAttr(d.path)}">▸ ${escapeHtml(d.name)}/</a>`;
+    }).join('');
+    /* 面包屑 */
+    const segs = DRIVE.dir ? DRIVE.dir.split('/') : [];
+    let acc = '';
+    const crumbs = `<a class="dcrumb" data-dir="">~/drive</a>` + segs.map((s) => {
+      acc = acc ? acc + '/' + s : s;
+      return ` / <a class="dcrumb" data-dir="${escapeAttr(acc)}">${escapeHtml(s)}</a>`;
+    }).join('');
+    /* 文件行：搜索时全局过滤，否则列当前目录直属子项 */
+    let rows;
+    if (DRIVE.q) {
+      rows = DRIVE.files.filter((f) => f.type === 'file' && f.name.toLowerCase().includes(DRIVE.q));
+      rows.sort((a, b) => a.path.localeCompare(b.path));
+    } else {
+      rows = driveChildren(DRIVE.dir).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
+    }
+    const rowHtml = rows.map((f) => {
+      if (f.type === 'dir') {
+        return `<tr class="drow is-dir" data-dir="${escapeAttr(f.path)}">
+          <td class="d-name">📁 <b>${escapeHtml(f.name)}/</b></td><td class="d-size mono">—</td><td class="d-date mono">—</td><td class="d-act mono">进入 →</td></tr>`;
+      }
+      const canPreview = DRIVE_TEXT.includes(f.ext);
+      return `<tr class="drow${canPreview ? ' is-text' : ''}" data-file="${escapeAttr(f.path)}" data-ext="${escapeAttr(f.ext)}">
+        <td class="d-name">${driveIcon(f.ext)} ${canPreview ? `<b class="d-open">${escapeHtml(f.name)}</b>` : escapeHtml(f.name)}</td>
+        <td class="d-size mono">${fmtSize(f.size)}</td>
+        <td class="d-date mono">${f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : ''}</td>
+        <td class="d-act"><a class="btn mini alt" href="${driveURL(f.path, 'api/drive/download')}" download>⬇ 下载</a></td></tr>`;
+    }).join('') || '<tr><td colspan="4" class="hint" style="padding:18px">空目录，或没有匹配的文件。</td></tr>';
+    el.innerHTML = `<section class="sec wrap">
+      <div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2>
+        <span class="search-term mono" style="margin-left:auto;max-width:220px"><input id="driveSearch" placeholder="> 搜索文件…" value="${escapeAttr(DRIVE.q)}" aria-label="搜索文件" /></span></div>
+      <p class="hint" style="margin-bottom:16px">共 ${m.fileCount || 0} 个文件 · ${m.dirCount || 0} 个目录 · ${fmtSize(m.totalSize || 0)} — 点击文件名在线预览，⬇ 直接下载</p>
+      <div class="drive-layout">
+        <aside class="drive-tree">
+          <a class="dtree-item mono${DRIVE.dir === '' ? ' on' : ''}" data-dir="">▸ 根目录/</a>
+          ${tree}
+        </aside>
+        <div class="drive-main">
+          <div class="d-crumbs mono">${crumbs}</div>
+          <table class="drive-table"><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead><tbody>${rowHtml}</tbody></table>
+        </div>
+      </div></section>`;
+    /* 事件绑定 */
+    el.querySelectorAll('[data-dir]').forEach((a) => a.addEventListener('click', () => {
+      DRIVE.dir = a.getAttribute('data-dir'); DRIVE.q = ''; renderDrive();
+    }));
+    el.querySelectorAll('.drow.is-text').forEach((tr) => tr.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return; // 点下载按钮不触发预览
+      openDrivePreview(tr.dataset.file, tr.dataset.ext);
+    }));
+    const si = $('#driveSearch');
+    if (si) {
+      si.addEventListener('input', () => { DRIVE.q = si.value.trim().toLowerCase(); renderDrive(); const n = $('#driveSearch'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+    }
+  }
+  /* 在线预览弹层：md 渲染 / 文本直出 / 图片展示，其余引导下载 */
+  async function openDrivePreview(fpath, ext) {
+    const box = $('#drivePreview');
+    if (!box) return;
+    $('#dpPath').textContent = '~/drive/' + fpath;
+    $('#dpDownload').href = driveURL(fpath, 'api/drive/download');
+    const body = $('#dpBody');
+    body.innerHTML = '<p class="hint">加载中…</p>';
+    box.hidden = false;
+    if (DRIVE_IMG.includes(ext)) {
+      body.innerHTML = `<img src="${driveURL(fpath, 'api/drive/download')}" alt="${escapeAttr(fpath)}" style="max-width:100%">`;
+      return;
+    }
+    try {
+      const r = await fetch(driveURL(fpath, 'api/drive/raw'));
+      if (!r.ok) throw new Error('bad');
+      const text = await r.text();
+      if (ext === '.md' && window.MD) {
+        body.innerHTML = '<div class="md dp-md">' + MD.render(text) + '</div>';
+      } else {
+        body.innerHTML = '<pre class="dp-pre mono">' + escapeHtml(text) + '</pre>';
+      }
+    } catch (e) {
+      body.innerHTML = '<p class="hint">预览加载失败，请直接下载。</p>';
+    }
+  }
+  function closeDrivePreview() { const el = $('#drivePreview'); if (el) el.hidden = true; }
   function viewCat(id) {
     const c = DATA.site.categories.find((x) => x.id === id);
     if (!c) { viewHome(); return; }
     const list = DATA.posts.filter((p) => p.category === id);
     $('#reader').hidden = true; $('#home').hidden = false;
     const arch = $('#archive'); if (arch) arch.hidden = true;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '栏目：' + c.name + ' · 夜神月博客';
     showList('栏目：' + c.name, list, false, { icon: c.icon, title: c.name, desc: c.desc, count: list.length });
@@ -430,6 +570,7 @@
     const list = DATA.posts.filter((p) => (p.tags || []).includes(t));
     $('#reader').hidden = true; $('#home').hidden = false;
     const arch = $('#archive'); if (arch) arch.hidden = true;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '标签：#' + t + ' · 夜神月博客';
     showList('标签：#' + t, list, false, { icon: 'wave', title: '#' + t, desc: '包含标签「' + t + '」的文章', count: list.length });
@@ -455,6 +596,7 @@
       ${nextPost ? `<a class="btn ghost" href="#/post/${nextPost.id}">下一课 →</a>` : '<span></span>'}
     </nav>`;
     const archEl = $('#archive'); if (archEl) archEl.hidden = true;
+    const dvEl = $('#drive'); if (dvEl) dvEl.hidden = true;
     $('#reader').innerHTML = `
       <div class="article wrap">
         <a class="btn ghost back" href="#/">← 返回列表</a>
@@ -708,6 +850,7 @@
     const push = (o) => items.push(o);
     if (!q) {
       push({ kind: '动作', icon: '🎲', title: '随机抽一课', run: rollDice });
+      push({ kind: '动作', icon: '🗄', title: '打开资源网盘', run: () => { location.hash = '#/drive'; } });
       push({ kind: '动作', icon: '🌓', title: '切换深浅主题', run: toggleTheme });
       push({ kind: '动作', icon: '⌨', title: '查看键盘快捷键', run: openKbdHelp });
       DATA.site.categories.forEach((c) =>
@@ -805,6 +948,7 @@
     else if (h.startsWith('#/cat/')) viewCat(h.split('/')[2]);
     else if (h.startsWith('#/tag/')) viewTag(decodeURIComponent(h.split('/')[2]));
     else if (h.startsWith('#/archive')) viewArchive();
+    else if (h.startsWith('#/drive')) viewDrive();
     else viewHome();
   }
 
@@ -881,6 +1025,8 @@
       if (lb && !lb.hidden && e.key === 'Escape') { lb.hidden = true; return; }
       /* ESC 关闭命令面板 / 帮助 */
       if (e.key === 'Escape') {
+        const dp = $('#drivePreview');
+        if (dp && !dp.hidden) { closeDrivePreview(); return; }
         if (!$('#cmdk').hidden) { closeCmdk(); return; }
         if (!$('#kbdHelp').hidden) { closeKbdHelp(); return; }
       }

@@ -134,6 +134,9 @@
 
     <!-- 归档视图 -->
     <div id="archive" hidden></div>
+
+    <!-- 资源网盘视图 -->
+    <div id="drive" hidden></div>
   </main>
 
   <footer class="footer">
@@ -181,6 +184,21 @@
         <div class="kbd-row"><span>深浅主题切换</span><span><kbd>D</kbd></span></div>
         <div class="kbd-row"><span>关闭弹层</span><span><kbd>ESC</kbd></span></div>
       </div>
+    </div>
+  </div>
+
+  <!-- 网盘文件预览弹层 -->
+  <div id="drivePreview" hidden role="dialog" aria-modal="true" aria-label="文件预览">
+    <div class="cmdk-mask"></div>
+    <div class="dp-panel">
+      <div class="dp-head">
+        <span class="dp-path mono" id="dpPath"></span>
+        <span class="row" style="gap:8px">
+          <a class="btn mini" id="dpDownload" href="#" download>⬇ 下载</a>
+          <span class="cmdk-esc mono" id="dpClose">ESC</span>
+        </span>
+      </div>
+      <div class="dp-body" id="dpBody"></div>
     </div>
   </div>
 

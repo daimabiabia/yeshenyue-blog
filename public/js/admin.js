@@ -278,6 +278,87 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  /* ---- 资源网盘管理 ---- */
+  const MAX_DRIVE = 30 * 1024 * 1024;
+  let DRIVE_FILES = null;
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+
+  async function loadDrive() {
+    const r = await fetch('/api/drive');
+    if (!r.ok) throw new Error('网盘接口不可用');
+    const j = await r.json();
+    DRIVE_FILES = j.files || [];
+    $('#d_stat').textContent = `（${j.fileCount || 0} 文件 · ${j.dirCount || 0} 目录 · ${fmtSize(j.totalSize || 0)}）`;
+    renderDriveList();
+  }
+  function renderDriveList() {
+    const list = $('#d_list');
+    if (!DRIVE_FILES) { list.innerHTML = '<p class="hint">加载中…</p>'; return; }
+    if (!DRIVE_FILES.length) { list.innerHTML = '<p class="hint">网盘是空的，先上传几个文件吧。</p>'; return; }
+    /* 按目录分组展示：目录内文件聚在一起，目录名做小标题 */
+    const dirs = {};
+    for (const f of DRIVE_FILES) {
+      const dir = f.type === 'dir' ? f.path : f.path.split('/').slice(0, -1).join('/');
+      (dirs[dir || '/'] = dirs[dir || '/'] || { dirs: [], files: [] });
+      if (f.type === 'dir') dirs[dir || '/'].dirs.push(f);
+      else dirs[dir || '/'].files.push(f);
+    }
+    const keys = Object.keys(dirs).sort();
+    list.innerHTML = keys.map((k) => {
+      const g = dirs[k];
+      const head = k === '/' ? '' : `<h3 class="hint" style="margin:14px 0 8px">📁 ${escapeHtml(k)}/</h3>`;
+      const rows = g.files.map((f) =>
+        `<div class="list-item"><div><strong>${escapeHtml(f.name)}</strong> <span class="hint">· ${fmtSize(f.size)} · ${new Date(f.mtime).toISOString().slice(0, 10)}</span></div>
+         <div class="row"><a class="btn mini alt" href="/api/drive/download?file=${encodeURIComponent(f.path)}" download>下载</a>
+         <button class="btn mini del" data-ddel="${escapeHtml(f.path)}">删除</button></div></div>`).join('')
+        + g.dirs.map((d) =>
+        `<div class="list-item"><div>📁 <strong>${escapeHtml(d.name)}/</strong> <span class="hint">· 目录</span></div>
+         <div class="row"><button class="btn mini del" data-ddel="${escapeHtml(d.path)}">删除</button></div></div>`).join('');
+      return head + rows;
+    }).join('');
+    list.querySelectorAll('[data-ddel]').forEach((b) => b.onclick = () => delDrive(b.dataset.ddel));
+  }
+  async function delDrive(p) {
+    if (!confirm('确认删除「' + p + '」？目录会连同里面所有文件一起删除，不可恢复。')) return;
+    try {
+      await api('DELETE', '/api/admin/drive', { path: p });
+      showMsg('#saveMsg', '已删除', true);
+      await loadDrive();
+    } catch (e) { showMsg('#saveMsg', '删除失败：' + e.message, false); }
+  }
+  async function uploadDrive() {
+    const f = $('#d_file').files[0];
+    const dir = ($('#d_dir').value || '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    if (!f) { showMsg('#saveMsg', '请先选择文件', false); return; }
+    if (f.size > MAX_DRIVE) { showMsg('#saveMsg', '文件超过 30MB 上限', false); return; }
+    const path = (dir ? dir + '/' : '') + f.name;
+    if (/[\\<>:"|?*]/.test(path) || path.split('/').some((s) => !s || s === '.' || s === '..')) {
+      showMsg('#saveMsg', '目录/文件名含非法字符', false); return;
+    }
+    const btn = $('#d_upload'); btn.disabled = true; btn.textContent = '上传中…';
+    try {
+      const data = await fileToBase64(f);
+      await api('POST', '/api/admin/drive/upload', { path, data });
+      showMsg('#saveMsg', '已上传：' + path, true);
+      $('#d_file').value = '';
+      await loadDrive();
+    } catch (e) { showMsg('#saveMsg', '上传失败：' + e.message, false); }
+    finally { btn.disabled = false; btn.textContent = '上传'; }
+  }
+  async function mkdirDrive() {
+    const name = $('#d_newdir').value.trim();
+    if (!name) { showMsg('#saveMsg', '请填写目录名', false); return; }
+    if (/[\\<>:"|?*]/.test(name) || name.split('/').some((s) => !s || s === '.' || s === '..')) {
+      showMsg('#saveMsg', '目录名含非法字符', false); return;
+    }
+    try {
+      await api('POST', '/api/admin/drive/mkdir', { path: name });
+      showMsg('#saveMsg', '目录已创建：' + name, true);
+      $('#d_newdir').value = '';
+      await loadDrive();
+    } catch (e) { showMsg('#saveMsg', '创建失败：' + e.message, false); }
+  }
+
   /* ---- 初始化 ---- */
   function init() {
     loadTheme();
@@ -293,10 +374,14 @@
     $('#addCat').onclick = addCat;
     $('#savePwd').onclick = savePwd;
     $('#backupBtn').onclick = downloadBackup;
+    $('#d_upload').onclick = uploadDrive;
+    $('#d_mkdir').onclick = mkdirDrive;
+    $('#d_refresh').onclick = () => loadDrive().catch((e) => showMsg('#saveMsg', '刷新失败：' + e.message, false));
     document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');
-      ['posts', 'site', 'pwd'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      ['posts', 'drive', 'site', 'pwd'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      if (b.dataset.tab === 'drive' && DRIVE_FILES === null) loadDrive().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
     });
     if (token()) enterDash();
   }

@@ -25,11 +25,13 @@ const SITE_FILE = path.join(DATA_DIR, 'site.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
 const LIKE_FILE = path.join(DATA_DIR, 'likes.json');
 const COMMENT_FILE = path.join(DATA_DIR, 'comments.json');
+const DRIVE_DIR = path.join(DATA_DIR, 'drive');
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_BODY = 6 * 1024 * 1024; // 请求体上限 6MB
 const MAX_UPLOAD = 4 * 1024 * 1024; // 图片上限 4MB
+const MAX_DRIVE_UPLOAD = 30 * 1024 * 1024; // 网盘单文件上限 30MB
 
-[DATA_DIR, PUBLIC_DIR, UPLOAD_DIR].forEach((d) => {
+[DATA_DIR, PUBLIC_DIR, UPLOAD_DIR, DRIVE_DIR].forEach((d) => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 });
 
@@ -52,17 +54,20 @@ function sendJSON(res, code, obj) {
   res.end(body);
 }
 
-function readBody(req) {
+function readBody(req, cap) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks = [];
+    let size = 0;
     let tooBig = false;
+    const limit = cap || MAX_BODY;
     req.on('data', (c) => {
-      data += c;
-      if (data.length > MAX_BODY) { tooBig = true; req.destroy(); }
+      size += c.length;
+      if (size > limit) { tooBig = true; req.destroy(); return; }
+      chunks.push(c);
     });
     req.on('end', () => {
       if (tooBig) return reject(new Error('请求体过大'));
-      try { resolve(data ? JSON.parse(data) : {}); }
+      try { resolve(Buffer.concat(chunks).toString('utf8') ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
       catch (e) { reject(new Error('请求体不是合法 JSON')); }
     });
     req.on('error', reject);
@@ -131,9 +136,65 @@ function slugify(s) {
     .slice(0, 60) || uid();
 }
 
+/* ============ 资源网盘（data/drive：访客可见可下载的 IoT 资料库） ============ */
+/* 允许入盘的扩展名白名单：文档 / 压缩包 / 固件镜像 / 常见源码与配置（不含 svg/html，防存储型 XSS） */
+const DRIVE_EXTS = ['.md', '.txt', '.pdf', '.zip', '.7z', '.json', '.csv',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif',
+  '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py', '.ino', '.hex', '.bin', '.elf'];
+/* 允许在线预览（文本方式直出）的扩展名 */
+const DRIVE_TEXT_EXTS = ['.md', '.txt', '.json', '.csv', '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py'];
+
+/* 递归遍历网盘目录，返回扁平文件树（相对路径统一用 / 分隔） */
+function walkDrive(dir, base) {
+  let out = [];
+  let items;
+  try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return out; }
+  for (const it of items) {
+    if (it.name.startsWith('.')) continue; // 隐藏文件不入盘
+    const full = path.join(dir, it.name);
+    const rel = base ? base + '/' + it.name : it.name;
+    if (it.isDirectory()) {
+      out.push({ name: it.name, path: rel, type: 'dir' });
+      out = out.concat(walkDrive(full, rel));
+    } else {
+      let st;
+      try { st = fs.statSync(full); } catch (e) { continue; }
+      out.push({ name: it.name, path: rel, type: 'file', size: st.size, mtime: st.mtimeMs, ext: path.extname(it.name).toLowerCase() });
+    }
+  }
+  return out;
+}
+
+/* 网盘相对路径安全校验：拒绝 .. / 绝对路径 / 非法段，返回绝对路径或 null */
+function driveSafe(rel) {
+  const clean = String(rel || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!clean) return null;
+  const segs = clean.split('/');
+  if (segs.some((s) => !s || s === '.' || s === '..' || /["<>:|?*]/.test(s))) return null;
+  const target = path.normalize(path.join(DRIVE_DIR, clean));
+  if (target !== DRIVE_DIR && !target.startsWith(DRIVE_DIR + path.sep)) return null;
+  return target;
+}
+
+/* 下载/预览前的公共检查，返回错误信息或 null */
+function driveCheck(target) {
+  const ext = path.extname(target).toLowerCase();
+  if (!DRIVE_EXTS.includes(ext)) return '不支持的文件类型';
+  let st;
+  try { st = fs.statSync(target); } catch (e) { return '文件不存在'; }
+  if (!st.isFile()) return '不是文件';
+  return null;
+}
+
+/* Content-Disposition：ASCII 回退名 + RFC 5987 UTF-8 真名（支持中文文件名） */
+function contentDisposition(name) {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");
+  const utf8 = encodeURIComponent(name);
+  return 'attachment; filename="' + ascii + '"; filename*=UTF-8\'\'' + utf8;
+}
+
 /* 图片魔数白名单：上传文件必须匹配真实图片格式签名，扩展名由检测结果决定，
- * 杜绝把脚本/HTML 伪装成图片上传后被同源引用执行的风险。 */
-const IMG_MAGIC = [
+ * 杜绝把脚本/HTML 伪装成图片上传后被同源引用执行的风险。 */const IMG_MAGIC = [
   { ext: '.png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }, // PNG 签名
   { ext: '.jpg', bytes: [0xff, 0xd8, 0xff] },                               // JPEG SOI
   { ext: '.gif', bytes: [0x47, 0x49, 0x46, 0x38] },                         // GIF8
@@ -346,6 +407,48 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { comment: item });
     }
 
+    /* ---- 资源网盘：文件树（访客可见） ---- */
+    if (method === 'GET' && pathname === '/api/drive') {
+      const files = walkDrive(DRIVE_DIR, '');
+      const fileCount = files.filter((f) => f.type === 'file').length;
+      const dirCount = files.filter((f) => f.type === 'dir').length;
+      const totalSize = files.reduce((s, f) => s + (f.type === 'file' ? f.size : 0), 0);
+      return sendJSON(res, 200, { files, fileCount, dirCount, totalSize });
+    }
+
+    /* ---- 资源网盘：文本在线预览（仅白名单文本类型） ---- */
+    if (method === 'GET' && pathname === '/api/drive/raw') {
+      const target = driveSafe(url.searchParams.get('file'));
+      if (!target) return sendJSON(res, 400, { error: '非法路径' });
+      const ext = path.extname(target).toLowerCase();
+      if (!DRIVE_TEXT_EXTS.includes(ext)) return sendJSON(res, 415, { error: '该类型不支持在线预览，请下载查看' });
+      const err = driveCheck(target);
+      if (err) return sendJSON(res, err === '文件不存在' ? 404 : 415, { error: err });
+      let buf;
+      try { buf = fs.readFileSync(target); } catch (e) { return sendJSON(res, 404, { error: '文件不存在' }); }
+      res.writeHead(200, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' }, SEC_HEADERS));
+      return res.end(buf);
+    }
+
+    /* ---- 资源网盘：下载（attachment，防路径穿越） ---- */
+    if (method === 'GET' && pathname === '/api/drive/download') {
+      const target = driveSafe(url.searchParams.get('file'));
+      if (!target) return sendJSON(res, 400, { error: '非法路径' });
+      const err = driveCheck(target);
+      if (err) {
+        res.writeHead(err === '文件不存在' ? 404 : 415, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
+        return res.end(err);
+      }
+      const st = fs.statSync(target);
+      res.writeHead(200, Object.assign({
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': st.size,
+        'Content-Disposition': contentDisposition(path.basename(target)),
+        'Cache-Control': 'no-cache',
+      }, SEC_HEADERS));
+      return res.end(fs.readFileSync(target));
+    }
+
     /* ---- RSS 订阅源：最新 30 篇，标题 + 摘要 + 链接 ---- */
     if (method === 'GET' && pathname === '/rss.xml') {
       const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -497,6 +600,43 @@ ${items}
           return sendJSON(res, 200, { ok: true });
         }
         return sendJSON(res, 405, { error: '方法不允许' });
+      }
+
+      /* ---- 资源网盘管理：上传（base64，单文件 ≤ 30MB，扩展名白名单） ---- */
+      if (method === 'POST' && pathname === '/api/admin/drive/upload') {
+        // base64 膨胀 4/3，放宽请求体上限
+        const b = await readBody(req, Math.ceil(MAX_DRIVE_UPLOAD * 4 / 3) + 65536);
+        const target = driveSafe(b.path);
+        if (!target) return sendJSON(res, 400, { error: '非法路径（不要包含 .. 等字符）' });
+        const ext = path.extname(target).toLowerCase();
+        if (!DRIVE_EXTS.includes(ext)) return sendJSON(res, 415, { error: '不支持的文件类型' });
+        const buf = Buffer.from(String(b.data || ''), 'base64');
+        if (!buf.length) return sendJSON(res, 400, { error: '缺少文件内容' });
+        if (buf.length > MAX_DRIVE_UPLOAD) return sendJSON(res, 413, { error: '文件过大（上限 30MB）' });
+        try {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, buf);
+        } catch (e) { return sendJSON(res, 500, { error: '写入失败：' + e.message }); }
+        return sendJSON(res, 200, { ok: true, path: String(b.path), size: buf.length });
+      }
+
+      /* ---- 资源网盘管理：新建目录 ---- */
+      if (method === 'POST' && pathname === '/api/admin/drive/mkdir') {
+        const b = await readBody(req);
+        const target = driveSafe(b.path);
+        if (!target) return sendJSON(res, 400, { error: '非法目录名' });
+        try { fs.mkdirSync(target, { recursive: true }); } catch (e) { return sendJSON(res, 500, { error: '创建失败：' + e.message }); }
+        return sendJSON(res, 200, { ok: true, path: String(b.path) });
+      }
+
+      /* ---- 资源网盘管理：删除文件或目录（递归，不可删根） ---- */
+      if (method === 'DELETE' && pathname === '/api/admin/drive') {
+        const b = await readBody(req);
+        const target = driveSafe(b.path);
+        if (!target || target === DRIVE_DIR) return sendJSON(res, 400, { error: '非法路径' });
+        if (!fs.existsSync(target)) return sendJSON(res, 404, { error: '不存在' });
+        fs.rmSync(target, { recursive: true, force: true });
+        return sendJSON(res, 200, { ok: true });
       }
 
       return sendJSON(res, 404, { error: 'Not Found' });

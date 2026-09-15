@@ -67,6 +67,7 @@
   <div class="admin hidden" id="dashView">
     <div class="tabs">
       <button data-tab="posts" class="on">文章管理</button>
+      <button data-tab="drive">资源网盘</button>
       <button data-tab="site">站点设置</button>
       <button data-tab="pwd">修改密码</button>
     </div>
@@ -135,6 +136,27 @@
         </div>
       </div>
       <button class="btn" id="saveSite" style="margin-top:16px">保存站点设置</button>
+    </div>
+
+    <!-- 资源网盘 -->
+    <div class="panel hidden" id="tab-drive">
+      <div class="card" style="padding:16px;margin-bottom:16px">
+        <div class="field"><label>上传到目录（相对路径，如 01-嵌入式基础，留空为根目录）</label><input id="d_dir" placeholder="01-嵌入式基础" /></div>
+        <div class="field"><label>选择文件（单文件 ≤ 30MB，支持 md / pdf / zip / 源码 / 图片等）</label>
+          <div class="row"><input type="file" id="d_file" style="flex:1" /><button class="btn mini" id="d_upload" type="button">上传</button></div>
+        </div>
+        <div class="row">
+          <input id="d_newdir" placeholder="新建目录名（如 08-调试笔记）" style="flex:1" />
+          <button class="btn mini alt" id="d_mkdir" type="button">+ 新建目录</button>
+        </div>
+        <p class="hint">前台入口：导航栏「网盘」或直接访问 <a href="/#/drive" target="_blank" rel="noopener">/#/drive</a></p>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <b>网盘文件</b>
+        <span class="hint" id="d_stat"></span>
+        <button class="btn ghost mini" id="d_refresh" style="margin-left:auto">↻ 刷新</button>
+      </div>
+      <div id="d_list"></div>
     </div>
 
     <!-- 密码 -->
