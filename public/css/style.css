@@ -1486,3 +1486,87 @@ p:last-child { margin-bottom: 0; }
 @media (max-width: 720px) {
   .arch-meta { display: none; }
 }
+
+/* ============ 20. 访客互动：点赞 / 收藏 / 留言墙 / 每日一读 / 人气榜 ============ */
+
+/* ---- 点赞 / 收藏按钮 ---- */
+.like-btn.liked { background: var(--red); color: #fff; border-color: var(--line); }
+.like-btn.pop { animation: like-pop .4s var(--ease-back); }
+@keyframes like-pop {
+  40% { transform: scale(1.25) rotate(-6deg); }
+  100% { transform: none; }
+}
+.star-btn.starred { background: var(--yellow); border-color: var(--line); }
+
+/* ---- 每日一读 ---- */
+.pick-card {
+  position: relative; display: block; padding: 26px 28px 22px 34px;
+  background: var(--page-2, #fff); border: var(--bw) solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--sh-md); color: var(--ink);
+  border-left: 8px solid var(--cat, var(--blue));
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.pick-card:hover { transform: translate(-3px, -3px); box-shadow: var(--sh-lg); }
+.pick-badge {
+  position: absolute; top: -14px; left: 20px;
+  background: var(--red); color: #fff; font-size: 12px; font-weight: 800;
+  letter-spacing: .08em; padding: 4px 12px; border: 2px solid var(--line);
+  border-radius: 999px; box-shadow: var(--sh-xs); transform: rotate(-2deg);
+}
+.pick-card h3 { font-size: var(--fs-xl); margin: 8px 0 8px; }
+.pick-card p { color: var(--ink-2); font-size: var(--fs-sm); margin: 0 0 12px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pick-go { display: inline-block; margin-top: 10px; font-weight: 800; }
+
+/* ---- 人气榜 ---- */
+.hot-list { display: grid; gap: 8px; }
+.hot-row {
+  display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+  background: var(--page-2, #fff); border: var(--bw-hair) solid var(--line);
+  border-radius: var(--radius-sm); color: var(--ink); box-shadow: var(--sh-xs);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.hot-row:hover { transform: translateX(6px); box-shadow: var(--sh-sm); }
+.hot-rank {
+  flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 800; font-size: 15px;
+  background: var(--page-3, #eee); border: 2px solid var(--line); border-radius: 8px;
+  transform: rotate(-4deg);
+}
+.hot-1 { background: var(--yellow); } .hot-2 { background: var(--orange); }
+.hot-3 { background: var(--red); color: #fff; }
+.hot-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hot-n { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; color: var(--red); font-weight: 700; }
+.hot-tip { margin: 10px 0 0; font-size: var(--fs-sm); color: var(--ink-2); }
+
+/* ---- 留言墙 ---- */
+.cmt { margin-top: 40px; border-top: var(--bw) solid var(--line); padding-top: 24px; }
+.cmt h3 { font-size: var(--fs-lg); display: flex; gap: 8px; align-items: baseline; }
+.cmt-count { font-size: var(--fs-sm); color: var(--ink-2); font-weight: 400; }
+.cmt-form { display: grid; gap: 10px; margin: 14px 0 20px; }
+.cmt-form input, .cmt-form textarea {
+  font: 500 14px var(--font-sans); color: var(--ink);
+  background: var(--page-2, #fff); border: var(--bw-hair) solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 12px; outline: none; resize: vertical;
+  width: 100%; box-sizing: border-box;
+}
+.cmt-form input:focus, .cmt-form textarea:focus { border-color: var(--ink); box-shadow: var(--sh-xs); }
+.cmt-actions { display: flex; align-items: center; gap: 12px; }
+.cmt-tip { font-size: 12.5px; color: var(--red); }
+.cmt-list { display: grid; gap: 10px; }
+.cmt-item {
+  background: var(--page-2, #fff); border: var(--bw-hair) solid var(--line-soft);
+  border-radius: var(--radius-sm); padding: 12px 16px; box-shadow: var(--sh-xs);
+}
+.cmt-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.cmt-head b { font-size: 13.5px; }
+.cmt-head .mono { font-size: 11.5px; color: var(--ink-2); }
+.cmt-item p { margin: 0; font-size: 14px; line-height: 1.65; word-break: break-word; }
+.cmt-empty, .cmt-loading { color: var(--ink-2); font-size: 13.5px; padding: 8px 2px; }
+
+/* ---- 响应式 / 降级 ---- */
+@media (max-width: 720px) {
+  .hot-row .cat-chip { display: none; }
+  .pick-card { padding: 22px 18px 18px 22px; }
+}
+@media print { .cmt, #hot-sec, #pick-sec, #fav-sec { display: none !important; } }

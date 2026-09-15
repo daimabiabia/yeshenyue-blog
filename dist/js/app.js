@@ -24,6 +24,14 @@
   };
   const READ_KEY = 'ysy_read_posts';
   const FOOT_KEY = 'ysy_footprints';
+  const LIKE_KEY = 'ysy_liked_ids';
+  const STAR_KEY = 'ysy_stars';
+  function getStars() {
+    try { return new Set(JSON.parse(localStorage.getItem(STAR_KEY) || '[]')); } catch (e) { return new Set(); }
+  }
+  function isLiked(id) {
+    try { return (JSON.parse(localStorage.getItem(LIKE_KEY) || '[]')).indexOf(id) >= 0; } catch (e) { return false; }
+  }
   function getReadSet() {
     try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); } catch (e) { return new Set(); }
   }
@@ -104,6 +112,56 @@
       }
     }, 70);
   }
+  /* ---- 每日一读：按日期确定性轮换 ---- */
+  function renderPickOfDay() {
+    const sec = $('#pick-sec'), el = $('#pickCard');
+    if (!sec || !el) return;
+    if (!DATA.posts.length) { sec.hidden = true; return; }
+    const day = Math.floor(Date.now() / 864e5);
+    const p = DATA.posts[day % DATA.posts.length];
+    const lv = levelInfo(p.level);
+    const color = CAT_COLOR[p.category] || 'blue';
+    el.innerHTML = `<a class="pick-card reveal in" href="#/post/${p.id}" style="--cat:var(--${color})">
+      <span class="pick-badge">今日推荐</span>
+      <h3>${escapeHtml(p.title)}</h3>
+      <p>${escapeHtml(p.excerpt || '')}</p>
+      <span class="foot-meta"><span class="cat-chip">${escapeHtml(catName(p.category))}</span><span>Lv.${lv.lv} ${lv.name}</span><span>⏱ 约 ${readingTime(p.content)} 分钟</span></span>
+      <span class="pick-go">去读 →</span></a>`;
+    sec.hidden = false;
+  }
+
+  /* ---- 人气榜：按真实点赞数 TOP5（服务端 /api/likes） ---- */
+  function renderHot() {
+    const sec = $('#hot-sec'), el = $('#hotList');
+    if (!sec || !el) return;
+    fetch('/api/likes').then((r) => r.json()).then((d) => {
+      const likes = d.likes || {};
+      const top = DATA.posts.slice().sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0)).slice(0, 5);
+      const zero = top.every((p) => !(likes[p.id] > 0));
+      el.innerHTML = top.map((p, i) => {
+        const color = CAT_COLOR[p.category] || 'blue';
+        return `<a class="hot-row reveal in" href="#/post/${p.id}" style="--cat:var(--${color})"><span class="hot-rank hot-${i + 1}">${i + 1}</span><span class="hot-title">${escapeHtml(p.title)}</span><span class="cat-chip">${escapeHtml(catName(p.category))}</span><span class="hot-n">${likes[p.id] || 0} 赞</span></a>`;
+      }).join('');
+      if (zero) el.insertAdjacentHTML('beforeend', '<p class="hot-tip">还没有人点赞——去文章页点亮第一颗 ❤</p>');
+      sec.hidden = false;
+    }).catch(() => { sec.hidden = true; });
+  }
+
+  /* ---- 我的收藏：本地星标文章 ---- */
+  function renderFavs() {
+    const sec = $('#fav-sec'), el = $('#favList');
+    if (!sec || !el) return;
+    const list = [...getStars()].map((id) => DATA.posts.find((p) => p.id === id)).filter(Boolean);
+    if (!list.length) { sec.hidden = true; el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="sec-head"><span class="kicker">SAVED</span><h2>我的收藏</h2></div>` +
+      list.map((p) => {
+        const color = CAT_COLOR[p.category] || 'blue';
+        const lv = levelInfo(p.level);
+        return `<a class="foot-card reveal in" href="#/post/${p.id}" style="--cat:var(--${color})"><span class="foot-icon">★</span><span class="foot-body"><h3>${escapeHtml(p.title)}</h3><span class="foot-meta"><span class="cat-chip">${escapeHtml(catName(p.category))}</span><span>Lv.${lv.lv} ${lv.name}</span></span></span><span class="foot-go">→</span></a>`;
+      }).join('');
+    sec.hidden = false;
+  }
+
   function renderProgress() {
     const el = $('#progress');
     if (!el) return;
@@ -307,6 +365,9 @@
     renderProgress();
     renderRoadmap();
     renderFootprints();
+    renderPickOfDay();
+    renderHot();
+    renderFavs();
     if (window.ACH) ACH.renderWall('#achWall');
     resetSeo();
     if (window.Motion && window.Motion.ready) {
@@ -404,12 +465,23 @@
           <span class="word-chip mono">约 ${words.toLocaleString()} 字</span>
           <span>${escapeHtml(p.date)}</span>
           <button type="button" class="copy-link" title="复制本文链接">🔗 复制链接</button>
+          <button type="button" class="copy-link like-btn" id="likeBtn" title="给这篇点个赞">♡ …</button>
+          <button type="button" class="copy-link star-btn" id="starBtn" title="收藏本文">☆ 收藏</button>
         </div>
         <h1>${escapeHtml(p.title)}</h1>
         <div class="md">${MD.render(stripLeadingH1(p.content))}</div>
         <div class="meta" style="margin-top:24px">${(p.tags || []).map((t) => `<a class="ptag" href="#/tag/${encodeURIComponent(t)}">#${escapeHtml(t)}</a>`).join('')}</div>
         ${pnHtml}
         ${relHtml}
+        <section class="cmt" id="cmtSec">
+          <h3>💬 留言板 <span class="cmt-count" id="cmtCount"></span></h3>
+          <div class="cmt-form">
+            <input id="cmtName" maxlength="24" placeholder="昵称（可留空，默认匿名访客）" />
+            <textarea id="cmtText" maxlength="500" rows="3" placeholder="写下你的想法、疑问或踩坑补充…"></textarea>
+            <div class="cmt-actions"><button type="button" class="btn" id="cmtSend">发表留言</button><span class="cmt-tip" id="cmtTip"></span></div>
+          </div>
+          <div class="cmt-list" id="cmtList"><p class="cmt-empty">留言加载中…</p></div>
+        </section>
       </div>`;
     $('#home').hidden = true;
     $('#reader').hidden = false;
@@ -433,6 +505,85 @@
     $('#reader').querySelectorAll('.rel .post').forEach((el) =>
       el.addEventListener('click', () => { location.hash = '#/post/' + el.dataset.id; }));
     bindArticleExtras();
+    bindVisitorExtras(p);
+  }
+
+  /* ---- 访客互动：点赞 / 收藏 / 留言墙 ---- */
+  let likeCache = null;
+  function bindVisitorExtras(p) {
+    const likeBtn = $('#likeBtn'), starBtn = $('#starBtn');
+    const paintLike = () => {
+      if (!likeBtn) return;
+      const n = (likeCache && likeCache[p.id]) || 0;
+      const liked = isLiked(p.id);
+      likeBtn.classList.toggle('liked', liked);
+      likeBtn.textContent = (liked ? '❤ ' : '♡ ') + n;
+    };
+    const loadLikes = () => {
+      if (likeCache) return Promise.resolve(likeCache);
+      return fetch('/api/likes').then((r) => r.json())
+        .then((d) => { likeCache = d.likes || {}; return likeCache; })
+        .catch(() => ({}));
+    };
+    loadLikes().then(paintLike);
+    if (likeBtn) likeBtn.addEventListener('click', () => {
+      if (isLiked(p.id)) return;
+      fetch('/api/like', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
+        .then((r) => r.json()).then((d) => {
+          try {
+            const arr = JSON.parse(localStorage.getItem(LIKE_KEY) || '[]');
+            if (arr.indexOf(p.id) < 0) arr.push(p.id);
+            localStorage.setItem(LIKE_KEY, JSON.stringify(arr));
+          } catch (e) {}
+          if (likeCache) likeCache[p.id] = d.count || ((likeCache[p.id] || 0) + 1);
+          paintLike();
+          likeBtn.classList.add('pop');
+          setTimeout(() => likeBtn.classList.remove('pop'), 400);
+        }).catch(() => {});
+    });
+    if (starBtn) {
+      const paintStar = () => {
+        const on = getStars().has(p.id);
+        starBtn.textContent = on ? '★ 已收藏' : '☆ 收藏';
+        starBtn.classList.toggle('starred', on);
+      };
+      paintStar();
+      starBtn.addEventListener('click', () => {
+        const s = getStars();
+        if (s.has(p.id)) s.delete(p.id); else s.add(p.id);
+        try { localStorage.setItem(STAR_KEY, JSON.stringify([...s])); } catch (e) {}
+        paintStar();
+      });
+    }
+    /* 留言墙 */
+    const listEl = $('#cmtList'), cntEl = $('#cmtCount'), tipEl = $('#cmtTip');
+    const fmtT = (t) => {
+      const d = new Date(t);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    const renderCmts = (items) => {
+      if (cntEl) cntEl.textContent = items.length ? '· ' + items.length + ' 条' : '';
+      if (!items.length) { listEl.innerHTML = '<p class="cmt-empty">还没有留言，坐个沙发？</p>'; return; }
+      listEl.innerHTML = items.map((c) =>
+        `<div class="cmt-item"><div class="cmt-head"><b>${escapeHtml(c.name)}</b><span class="mono">${fmtT(c.t)}</span></div><p>${escapeHtml(c.text)}</p></div>`).join('');
+    };
+    fetch('/api/comments?post=' + encodeURIComponent(p.id)).then((r) => r.json())
+      .then((d) => renderCmts(d.comments || []))
+      .catch(() => { if (listEl) listEl.innerHTML = '<p class="cmt-empty">留言加载失败，稍后刷新再试</p>'; });
+    const send = $('#cmtSend');
+    if (send) send.addEventListener('click', () => {
+      const text = $('#cmtText').value.trim();
+      if (!text) { if (tipEl) tipEl.textContent = '先写点什么吧'; return; }
+      fetch('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post: p.id, name: $('#cmtName').value, text }) })
+        .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || '发送失败'); return d; })
+        .then(() => {
+          $('#cmtText').value = '';
+          if (tipEl) tipEl.textContent = '';
+          return fetch('/api/comments?post=' + encodeURIComponent(p.id)).then((r) => r.json()).then((dd) => renderCmts(dd.comments || []));
+        })
+        .catch((e) => { if (tipEl) tipEl.textContent = e.message; });
+    });
   }
 
   /* ---- 文章页增强：目录 TOC / 复制代码 / 复制链接 / 图片灯箱 ---- */
@@ -754,6 +905,12 @@
       if (k === 't') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
       if (k === 'd') { toggleTheme(); return; }
       if (k === 's' && window.SFX) { syncSfxBtn(); return; }
+      /* J/K 键控阅读：整屏平滑滚动 */
+      if (k === 'j' || k === 'k') {
+        e.preventDefault();
+        window.scrollBy({ top: (k === 'j' ? 1 : -1) * Math.round(window.innerHeight * 0.78), behavior: 'smooth' });
+        return;
+      }
       /* 文章页快捷键：← → 翻上一课/下一课 */
       if ($('#reader').hidden) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;

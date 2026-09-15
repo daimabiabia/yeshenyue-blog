@@ -23,6 +23,8 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads');
 const SITE_FILE = path.join(DATA_DIR, 'site.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
+const LIKE_FILE = path.join(DATA_DIR, 'likes.json');
+const COMMENT_FILE = path.join(DATA_DIR, 'comments.json');
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_BODY = 6 * 1024 * 1024; // 请求体上限 6MB
 const MAX_UPLOAD = 4 * 1024 * 1024; // 图片上限 4MB
@@ -33,6 +35,13 @@ const MAX_UPLOAD = 4 * 1024 * 1024; // 图片上限 4MB
 
 /* ============ 工具 ============ */
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+/* ---- 访客互动数据（点赞 / 留言）持久化 ---- */
+function loadJSON(file, dflt) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return dflt; } }
+function saveJSON(file, val) { try { fs.writeFileSync(file, JSON.stringify(val)); } catch (e) {} }
+const likes = loadJSON(LIKE_FILE, {});
+let comments = loadJSON(COMMENT_FILE, []);
+const lastCommentAt = new Map(); /* ip -> 上次留言时间戳，留言冷却用 */
 
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -290,6 +299,51 @@ const server = http.createServer(async (req, res) => {
     /* ---- 公开 API ---- */
     if (method === 'GET' && pathname === '/api/site') {
       return sendJSON(res, 200, site);
+    }
+
+    /* ---- 访客互动：点赞（跨访客真实计数，持久化 likes.json） ---- */
+    if (method === 'GET' && pathname === '/api/likes') {
+      return sendJSON(res, 200, { likes });
+    }
+    if (method === 'POST' && pathname === '/api/like') {
+      const b = await readBody(req);
+      const id = String((b && b.id) || '');
+      if (!site.posts.some((p) => p.id === id)) return sendJSON(res, 404, { error: '文章不存在' });
+      likes[id] = (likes[id] || 0) + 1;
+      saveJSON(LIKE_FILE, likes);
+      return sendJSON(res, 200, { count: likes[id] });
+    }
+
+    /* ---- 访客互动：留言墙（持久化 comments.json，每篇保留最新 50 条，5 秒冷却） ---- */
+    if (method === 'GET' && pathname === '/api/comments') {
+      const q = new URL(req.url, 'http://localhost').searchParams;
+      const post = q.get('post');
+      const list = (post ? comments.filter((c) => c.post === post) : comments.slice())
+        .sort((a, b2) => b2.t - a.t);
+      return sendJSON(res, 200, { comments: list });
+    }
+    if (method === 'POST' && pathname === '/api/comment') {
+      const ip = req.socket.remoteAddress || '';
+      const now = Date.now();
+      if (now - (lastCommentAt.get(ip) || 0) < 5000) {
+        return sendJSON(res, 429, { error: '发言太快，歇几秒再发' });
+      }
+      const b = await readBody(req);
+      const postId = String((b && b.post) || '');
+      const text = String((b && b.text) || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+      const name = String((b && b.name) || '').trim().slice(0, 24) || '匿名访客';
+      if (!site.posts.some((p) => p.id === postId)) return sendJSON(res, 404, { error: '文章不存在' });
+      if (!text) return sendJSON(res, 400, { error: '留言内容不能为空' });
+      const item = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), post: postId, name, text, t: now };
+      comments.push(item);
+      const perPost = comments.filter((c) => c.post === postId).sort((a2, b2) => b2.t - a2.t);
+      if (perPost.length > 50) {
+        const drop = new Set(perPost.slice(50).map((c) => c.id));
+        comments = comments.filter((c) => !drop.has(c.id));
+      }
+      saveJSON(COMMENT_FILE, comments);
+      lastCommentAt.set(ip, now);
+      return sendJSON(res, 200, { comment: item });
     }
 
     /* ---- RSS 订阅源：最新 30 篇，标题 + 摘要 + 链接 ---- */
