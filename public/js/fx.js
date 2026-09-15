@@ -1,5 +1,7 @@
-/* 夜神月博客 · fx.js 页面特效引擎（canvas 零依赖）
- * 1) 鼠标糖果拖尾  2) 点击爆炸  3) Konami 彩蛋糖果雨
+/* 夜神月博客 · fx.js 页面特效引擎 v2（canvas 零依赖）
+ * 1) 鼠标糖果拖尾  2) 点击爆炸  3) Konami 彩蛋糖果雨  4) Shift 彩虹轨迹
+ * 5) 长按蓄力超级爆炸  6) 双击冲击波  7) 卡片 3D 倾斜+光泽
+ * 事件广播：fx:burst / fx:mega / fx:konami（音效与成就系统监听）
  * 降级：prefers-reduced-motion 全禁；页面隐藏暂停；输入框/弹层内点击不触发爆炸
  */
 (function () {
@@ -66,6 +68,15 @@
         ctx.beginPath();
         ctx.arc(0, 0, s, 0, 6.2832);
         ctx.fill();
+      } else if (p.shape === 'ring') {
+        /* 冲击波：半径随寿命增长、线宽随寿命收窄的圆环 */
+        var g2 = 1 - p.life / p.max;
+        ctx.globalAlpha = (1 - g2) * 0.9;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, p.size * (1 - g2));
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r0 + g2 * p.rGrow, 0, 6.2832);
+        ctx.stroke();
       } else {
         ctx.fillRect(-s, -s, s * 2, s * 2);
       }
@@ -125,9 +136,46 @@
         life: 620 + Math.random() * 300, max: 900, fade: 'out', shrink: true
       });
     }
+    fxEvent('fx:burst', { x: x, y: y, n: n });
   }
 
-  /* ---- 3) Konami 彩蛋：↑↑↓↓←→←→BA = 全屏糖果雨 + 连环爆炸 ---- */
+  function fxEvent(name, detail) {
+    try { document.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {}
+  }
+
+  /* ---- 2.5) 冲击波：单发扩散圆环 ---- */
+  function shockwave(x, y, color) {
+    var pal = themePalette();
+    spawn({
+      x: x, y: y, vx: 0, vy: 0,
+      rot: 0, vr: 0, r0: 6, rGrow: 90 + Math.random() * 50,
+      size: 5, shape: 'ring',
+      color: color || pal[(Math.random() * pal.length) | 0],
+      life: 480, max: 480, fade: 'none', shrink: false
+    });
+  }
+
+  /* ---- 2.6) 超级爆炸（长按蓄力释放）：60 粒 + 双冲击波 ---- */
+  function megaBurst(x, y) {
+    var pal = themePalette();
+    for (var i = 0; i < 60; i++) {
+      var a = Math.random() * 6.2832;
+      var sp = 3 + Math.random() * 9;
+      spawn({
+        x: x, y: y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3.5,
+        g: 0.18, rot: Math.random() * 3.14, vr: (Math.random() - 0.5) * 0.5,
+        size: 3 + Math.random() * 5, shape: Math.random() < 0.25 ? 'plus' : (Math.random() < 0.4 ? 'dot' : 'square'),
+        color: pal[(Math.random() * pal.length) | 0],
+        life: 800 + Math.random() * 400, max: 1200, fade: 'out', shrink: true
+      });
+    }
+    shockwave(x, y, pal[0]);
+    setTimeout(function () { shockwave(x, y, pal[2]); }, 90);
+    fxEvent('fx:mega', { x: x, y: y });
+  }
+
+  /* ---- 2.7) Konami 彩蛋：↑↑↓↓←→←→BA = 全屏糖果雨 + 连环爆炸 ---- */
   var SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
   var seqIdx = 0;
   function candyRain() {
@@ -148,12 +196,61 @@
       burst(Math.random() * innerWidth, innerHeight * (0.2 + Math.random() * 0.5), 22);
       if (++waves >= 5) clearInterval(timer);
     }, 260);
+    fxEvent('fx:konami', {});
   }
 
-  document.addEventListener('mousemove', function (e) { trail(e.clientX, e.clientY); }, { passive: true });
+  /* ---- 4) Shift 彩虹轨迹：按住 Shift 拖出彩虹光带 ---- */
+  var hue = 0, lastRX = -99, lastRY = -99;
+  function rainbow(x, y) {
+    var dx = x - lastRX, dy = y - lastRY;
+    if (dx * dx + dy * dy < 100) return;
+    lastRX = x; lastRY = y;
+    hue = (hue + 14) % 360;
+    spawn({
+      x: x, y: y,
+      vx: dx * 0.04, vy: dy * 0.04 - 0.2,
+      g: 0.012, rot: 0, vr: 0,
+      size: 3 + Math.random() * 2, shape: 'dot',
+      color: 'hsl(' + hue + ', 95%, 60%)',
+      life: 760, max: 760, fade: 'out', shrink: true
+    });
+  }
+
+  /* ---- 5) 长按蓄力：按住空白处 0.6s 释放超级爆炸 ---- */
+  var pressT = 0, pressX = 0, pressY = 0, chargeTimer = 0, suppressClick = false;
+  function endPress() { clearInterval(chargeTimer); pressT = 0; }
+  document.addEventListener('mousemove', function (e) {
+    if (e.shiftKey) { rainbow(e.clientX, e.clientY); return; }
+    trail(e.clientX, e.clientY);
+  }, { passive: true });
+  document.addEventListener('pointerdown', function (e) {
+    if (isUiTarget(e.target)) return;
+    pressX = e.clientX; pressY = e.clientY;
+    pressT = Date.now();
+    /* 蓄力视觉：按住期间周期性冒出蓄力环 */
+    chargeTimer = setInterval(function () {
+      shockwave(pressX + (Math.random() * 16 - 8), pressY + (Math.random() * 16 - 8));
+    }, 110);
+    setTimeout(function () {
+      if (pressT && Date.now() - pressT >= 560) {
+        pressT = 0;
+        clearInterval(chargeTimer);
+        suppressClick = true;
+        megaBurst(pressX, pressY);
+      }
+    }, 580);
+  }, { passive: true });
+  document.addEventListener('pointerup', endPress, { passive: true });
+  document.addEventListener('pointercancel', endPress, { passive: true });
   document.addEventListener('click', function (e) {
+    if (suppressClick) { suppressClick = false; return; }
     if (isUiTarget(e.target)) return;
     burst(e.clientX, e.clientY);
+  }, { passive: true });
+  /* ---- 6) 双击冲击波 ---- */
+  document.addEventListener('dblclick', function (e) {
+    if (isUiTarget(e.target)) return;
+    shockwave(e.clientX, e.clientY);
   }, { passive: true });
   document.addEventListener('touchstart', function (e) {
     var t = e.touches[0];
@@ -169,13 +266,45 @@
     }
   });
 
+  /* ---- 7) 卡片 3D 倾斜 + 光泽跟随（CSS 变量 --tx/--ty/--gx/--gy） ---- */
+  var TILT_SEL = '.post, .cat, .foot-card, .cta';
+  var tiltBound = false;
+  function tilt() {
+    if (tiltBound) return;
+    tiltBound = true;
+    document.addEventListener('mousemove', function (e) {
+      var card = e.target && e.target.closest ? e.target.closest(TILT_SEL) : null;
+      if (!card) return;
+      var r = card.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var px = (e.clientX - r.left) / r.width - 0.5;
+      var py = (e.clientY - r.top) / r.height - 0.5;
+      card.style.setProperty('--tx', (py * -7).toFixed(2) + 'deg');
+      card.style.setProperty('--ty', (px * 9).toFixed(2) + 'deg');
+      card.style.setProperty('--gx', ((px + 0.5) * 100).toFixed(1) + '%');
+      card.style.setProperty('--gy', ((py + 0.5) * 100).toFixed(1) + '%');
+      if (!card._tiltBound) {
+        card._tiltBound = true;
+        card.addEventListener('mouseleave', function () {
+          card.style.setProperty('--tx', '0deg');
+          card.style.setProperty('--ty', '0deg');
+        });
+      }
+    }, { passive: true });
+  }
+
   /* 测试钩子（只读计数，不参与渲染逻辑） */
   window.FX = {
     ready: true,
     canvas: cv,
+    version: 2,
     stats: function () { return { particles: parts.length, running: running }; },
     burst: burst,
+    megaBurst: megaBurst,
+    shockwave: shockwave,
     candyRain: candyRain,
-    trail: trail
+    trail: trail,
+    rainbow: rainbow,
+    tilt: tilt
   };
 })();

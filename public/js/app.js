@@ -86,6 +86,7 @@
   function rollDice() {
     if (rolling || !DATA.posts.length) return;
     rolling = true;
+    if (window.ACH) ACH.bump('ysy_dice_n', 10, 'dice10');
     const btn = $('#diceBtn');
     if (btn) btn.classList.add('rolling');
     const cur = (location.hash.match(/^#\/post\/([^/?]+)/) || [])[1];
@@ -158,6 +159,7 @@
     document.documentElement.setAttribute('data-theme', nx);
     localStorage.setItem('theme', nx);
     $('#themeBtn').textContent = nx === 'dark' ? '☀' : '🌙';
+    if (window.SFX && SFX.enabled) SFX.whoosh();
     if (window.Motion && window.Motion.ready) window.Motion.pop($('#themeBtn'));
   }
 
@@ -386,6 +388,7 @@
     }
     const changed = markRead(p.id);
     pushFootprint(p.id);
+    if (window.ACH) ACH.checkRead(DATA.posts.length);
     renderProgress();
     if (changed) { /* 进度已更新，下次回首页即可见 */ }
     $('#reader').querySelectorAll('.rel .post').forEach((el) =>
@@ -710,6 +713,7 @@
       if (k === 'r') { rollDice(); return; }
       if (k === 't') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
       if (k === 'd') { toggleTheme(); return; }
+      if (k === 's' && window.SFX) { syncSfxBtn(); return; }
       /* 文章页快捷键：← → 翻上一课/下一课 */
       if ($('#reader').hidden) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -755,6 +759,20 @@
       }
     });
     if (tt) tt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    /* 8-bit 音效开关 + 卡片 3D 倾斜 + 首访成就 */
+    function syncSfxBtn() {
+      if (!window.SFX) return;
+      const on = SFX.toggle();
+      const b = $('#sfxBtn');
+      if (b) b.textContent = on ? '🔊' : '🔇';
+    }
+    const sb = $('#sfxBtn');
+    if (sb) {
+      sb.textContent = (window.SFX && SFX.enabled) ? '🔊' : '🔇';
+      sb.addEventListener('click', syncSfxBtn);
+    }
+    if (window.FX && FX.ready) FX.tilt();
+    if (window.ACH) ACH.firstVisit();
     route();
   }
   document.addEventListener('DOMContentLoaded', init);

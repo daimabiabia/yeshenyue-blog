@@ -1391,3 +1391,68 @@ p:last-child { margin-bottom: 0; }
 @media print {
   #fx-canvas, #readbarPct { display: none !important; }
 }
+
+/* ============ 18. 成就 Toast / 卡片 3D 倾斜 / 进度条渐变 ============ */
+
+/* ---- 成就 Toast（右下角） ---- */
+#toast-box {
+  position: fixed; right: 18px; bottom: 18px; z-index: calc(var(--z-lb) + 20);
+  display: grid; gap: 10px; pointer-events: none;
+}
+.ach-toast {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--page-2, #fff); color: var(--ink);
+  border: var(--bw) solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--sh-lg); padding: 12px 18px;
+  animation: toast-in .38s var(--ease-back);
+  max-width: min(340px, calc(100vw - 36px));
+}
+.ach-toast.bye { animation: toast-out .5s var(--ease) forwards; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(60px) rotate(2deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(14px) scale(.95); }
+}
+.ach-toast .at-icon { font-size: 26px; flex: 0 0 auto; }
+.ach-toast .at-body { display: grid; gap: 2px; min-width: 0; }
+.ach-toast .at-body b { font-size: 14px; }
+.ach-toast .at-body i { font-style: normal; font-size: 12.5px; color: var(--ink-2); }
+
+/* ---- 卡片 3D 倾斜 + 光泽跟随（fx.tilt 写入 --tx/--ty/--gx/--gy） ---- */
+.post, .cat, .foot-card, .cta {
+  transform: perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
+  transition: transform .18s var(--ease-out, ease-out), box-shadow var(--t-fast) var(--ease);
+  will-change: transform;
+  position: relative;
+}
+.post::after, .cat::after, .foot-card::after, .cta::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .28), transparent 60%);
+  opacity: 0; transition: opacity .2s var(--ease); pointer-events: none;
+}
+[data-theme="dark"] .post::after, [data-theme="dark"] .cat::after,
+[data-theme="dark"] .foot-card::after, [data-theme="dark"] .cta::after {
+  background: radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .1), transparent 60%);
+}
+.post:hover::after, .cat:hover::after, .foot-card:hover::after, .cta:hover::after { opacity: 1; }
+
+/* ---- 阅读进度条：糖果渐变流动 ---- */
+#readbar .rp-fill {
+  background: linear-gradient(90deg, #FF2E88, #FF7A1A, #FFD400, #9BEB00, #00A3FF, #8B5CF6, #FF2E88);
+  background-size: 300% 100%;
+  animation: rp-flow 3.2s linear infinite;
+}
+@keyframes rp-flow { to { background-position: 300% 0; } }
+
+/* ---- 蓄力提示（长按时 body 状态可选，预留） ---- */
+@media (prefers-reduced-motion: reduce) {
+  #toast-box { display: none !important; }
+  .post, .cat, .foot-card, .cta { transform: none !important; }
+  .post::after, .cat::after, .foot-card::after, .cta::after { display: none !important; }
+  #readbar .rp-fill { animation: none !important; background: var(--yellow) !important; }
+}
+@media print {
+  #toast-box { display: none !important; }
+}
