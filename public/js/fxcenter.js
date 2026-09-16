@@ -156,17 +156,37 @@
     s.onload = function () {
       window.__waifuLoaded = true;
       if (typeof window.initWidget === 'function') {
+        /* 该开关一旦为 true 会永久拒绝渲染； ours 的 FXS 面板才是唯一开关，这里强制清掉 */
+        try { localStorage.removeItem('waifu-disabled'); } catch (e) {}
+        /* 模型列表读取 waifu-tips.json 的 models 字段（已本地化），config.models 无效 */
         window.initWidget({
           waifuPath: base + 'waifu-tips.json',
           cubism2Path: base + 'live2d.min.js',
-          models: [
-            { paths: [base + 'models/shizuku/shizuku.model.json'] },
-            { paths: [base + 'models/z16/z16.model.json'] },
-          ],
           tools: ['switch-model', 'switch-texture', 'photo', 'info', 'quit'],
           logLevel: 'warn',
           drag: true,
         });
+        /* 新版首次访问只显示边缘小召唤按钮；且 24h 内重复访问点按钮会被
+         * waifu-display 时间戳判定吞掉、完全不调召唤函数。这里先删时间戳
+         * 再点按钮 → 必然走完整召唤（插 DOM + 加载模型 + 工具条）。 */
+        setTimeout(function () {
+          try {
+            localStorage.removeItem('waifu-display');
+            localStorage.removeItem('waifu-disabled');
+          } catch (e) {}
+          var t = document.getElementById('waifu-toggle');
+          if (t) t.click();
+        }, 400);
+        /* 兜底：2.2s 后仍未升场则强制显示容器（模型加载由点击路径保证） */
+        setTimeout(function () {
+          var w = document.getElementById('waifu');
+          if (w && !w.classList.contains('waifu-active')) {
+            w.classList.remove('waifu-hidden');
+            w.classList.add('waifu-active');
+            var tg = document.getElementById('waifu-toggle');
+            if (tg) tg.remove();
+          }
+        }, 2200);
         if (!S.waifu) {
           var w = document.getElementById('waifu');
           if (w) w.style.display = 'none';

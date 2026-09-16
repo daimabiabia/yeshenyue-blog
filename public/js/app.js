@@ -593,6 +593,12 @@
     }
     const rl = $('#driveReLock');
     if (rl) rl.addEventListener('click', relockDrive);
+    /* 灯箱：点击任意位置（遮罩或图片）即关闭 */
+    const lb0 = $('#lightbox');
+    if (lb0 && !lb0._closeBound) {
+      lb0._closeBound = true;
+      lb0.addEventListener('click', () => { lb0.hidden = true; });
+    }
   }
   /* 在线预览弹层：md 渲染 / 文本直出 / 图片展示，其余引导下载 */
   async function openDrivePreview(fpath, ext) {
@@ -1217,6 +1223,12 @@
         else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMove(-1); }
         else if (e.key === 'Enter') { e.preventDefault(); cmdkRun(CMDK.sel); }
       });
+    }
+    /* 灯箱：点击（遮罩或图片）任意位置关闭 */
+    const lbNow = $('#lightbox');
+    if (lbNow && !lbNow._closeBound) {
+      lbNow._closeBound = true;
+      lbNow.addEventListener('click', () => { lbNow.hidden = true; });
     }
     document.addEventListener('keydown', (e) => {
       /* 灯箱：ESC 关闭 */
