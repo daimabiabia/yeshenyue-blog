@@ -44,6 +44,49 @@ function saveJSON(file, val) { try { fs.writeFileSync(file, JSON.stringify(val))
 const likes = loadJSON(LIKE_FILE, {});
 const DRIVE_DL_FILE = path.join(DATA_DIR, 'drive-downloads.json');
 const driveDl = loadJSON(DRIVE_DL_FILE, {}); // { 相对路径: 下载次数 }
+
+/* ---- 照片墙（data/gallery.json：[{id,src,title,rot,tape,cap}]） ---- */
+const GALLERY_FILE = path.join(DATA_DIR, 'gallery.json');
+let gallery = loadJSON(GALLERY_FILE, null);
+if (!Array.isArray(gallery)) gallery = [];
+function saveGallery() { saveJSON(GALLERY_FILE, gallery); }
+
+/* ---- IP 黑名单（data/banned.json: [ip]）：命中后所有页面与 API 返回 429 ---- */
+const BANNED_FILE = path.join(DATA_DIR, 'banned.json');
+let banned = loadJSON(BANNED_FILE, []);
+if (!Array.isArray(banned)) banned = [];
+function saveBanned() { saveJSON(BANNED_FILE, banned); }
+function isBanned(ip) { return banned.includes(ip); }
+
+/* ---- 可疑 IP（data/watch.json: [{ip,count,last}]）：登录/解锁失败自动记录 ---- */
+const WATCH_FILE = path.join(DATA_DIR, 'watch.json');
+let watch = loadJSON(WATCH_FILE, []);
+if (!Array.isArray(watch)) watch = [];
+function saveWatch() { saveJSON(WATCH_FILE, watch); }
+function noteWatch(ip, reason) {
+  if (!ip || ip === '::1' || ip === '127.0.0.1') return; // 本机不计
+  const it = watch.find((w) => w.ip === ip);
+  if (it) { it.count += 1; it.last = new Date().toISOString(); if (reason) it.reason = reason; }
+  else watch.push({ ip, count: 1, last: new Date().toISOString(), reason: reason || '' });
+  if (watch.length > 100) watch = watch.slice(-100); // 只留最近 100 条
+  saveWatch();
+}
+
+/* ---- 访问日志（data/visits.json：PV/UV + 最近 300 条，只记页面与 API 主路由） ---- */
+const VISITS_FILE = path.join(DATA_DIR, 'visits.json');
+let visits = loadJSON(VISITS_FILE, null);
+if (!visits || typeof visits !== 'object') visits = { total: 0, days: {}, uips: [], recent: [] };
+function saveVisits() { saveJSON(VISITS_FILE, visits); }
+function noteVisit(ip, pathname) {
+  if (/\.(css|js|png|jpg|jpeg|webp|gif|ico|svg|woff2?)$/i.test(pathname)) return; // 静态资源不计
+  visits.total += 1;
+  const day = new Date().toISOString().slice(0, 10);
+  visits.days[day] = (visits.days[day] || 0) + 1;
+  if (!visits.uips.includes(ip)) { visits.uips.push(ip); if (visits.uips.length > 5000) visits.uips = visits.uips.slice(-5000); }
+  visits.recent.unshift({ ip, path: pathname, t: Date.now() });
+  if (visits.recent.length > 300) visits.recent.length = 300;
+  saveVisits();
+}
 let comments = loadJSON(COMMENT_FILE, []);
 const lastCommentAt = new Map(); /* ip -> 上次留言时间戳，留言冷却用 */
 
@@ -391,8 +434,17 @@ const server = http.createServer(async (req, res) => {
   try { pathname = decodeURIComponent(url.pathname); } // 非法百分号编码（如 %ZZ）会抛 URIError
   catch (e) { res.writeHead(400, SEC_HEADERS); return res.end('Bad Request'); }
   const method = req.method.toUpperCase();
+  const ip = req.socket.remoteAddress || 'unknown';
 
   try {
+    /* ---- IP 黑名单：命中直接 429（静态资源也挡，完整隔离） ---- */
+    if (isBanned(ip)) {
+      res.writeHead(429, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
+      return res.end('Your IP has been blocked.');
+    }
+    /* ---- 访问日志（页面与 API） ---- */
+    noteVisit(ip, pathname);
+
     /* ---- 静态资源 ---- */
     if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
       return sendFile(res, path.join(PUBLIC_DIR, 'index.html'));
@@ -400,13 +452,18 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && (pathname === '/admin' || pathname === '/admin.html')) {
       return sendFile(res, path.join(PUBLIC_DIR, 'admin.html'));
     }
-    if (method === 'GET' && /^\/(css|js|uploads)\//.test(pathname)) {
+    if (method === 'GET' && /^\/(css|js|uploads|img)\//.test(pathname)) {
       return sendFile(res, safeJoin(PUBLIC_DIR, pathname));
     }
 
     /* ---- 公开 API ---- */
     if (method === 'GET' && pathname === '/api/site') {
       return sendJSON(res, 200, site);
+    }
+
+    /* ---- 照片墙（公开只读） ---- */
+    if (method === 'GET' && pathname === '/api/gallery') {
+      return sendJSON(res, 200, { photos: gallery });
     }
 
     /* ---- 访客互动：点赞（跨访客真实计数，持久化 likes.json） ---- */
@@ -543,6 +600,7 @@ ${items}
       const b = await readBody(req);
       if (!verifyPassword(b.password)) {
         const rf = recordLoginFail(ip);
+        noteWatch(ip, 'admin-login-fail');
         return sendJSON(res, 401, { error: rf.locked ? '失败次数过多，已锁定 15 分钟' : `密码错误（还剩 ${rf.left} 次机会）` });
       }
       loginFails.delete(ip);
@@ -560,6 +618,7 @@ ${items}
       const b = await readBody(req);
       if (sha256(String(b.pass || '') + driveLock.salt) !== driveLock.hash) {
         const rf = recordDriveFail(ip);
+        noteWatch(ip, 'drive-unlock-fail');
         return sendJSON(res, 401, { error: rf.locked ? '失败次数过多，已锁定 15 分钟' : `口令错误（还剩 ${rf.left} 次机会）` });
       }
       driveFails.delete(ip);
@@ -720,6 +779,97 @@ ${items}
         driveLock.hash = sha256(np + driveLock.salt);
         saveDriveLock();
         for (const [t, rec] of sessions) if (rec.kind === 'drive') sessions.delete(t);
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      /* ---- 留言管理：列表 + 删除 ---- */
+      if (method === 'GET' && pathname === '/api/admin/comments') {
+        const list = comments.slice().sort((a, b2) => b2.t - a.t);
+        return sendJSON(res, 200, { comments: list });
+      }
+      if (method === 'DELETE' && pathname === '/api/admin/comments') {
+        const q = new URL(req.url, 'http://localhost').searchParams;
+        const id = q.get('id');
+        const before = comments.length;
+        comments = comments.filter((c) => c.id !== id);
+        saveJSON(COMMENT_FILE, comments);
+        return sendJSON(res, 200, { ok: true, removed: before - comments.length });
+      }
+
+      /* ---- 点赞管理：全量 + 重置 ---- */
+      if (method === 'GET' && pathname === '/api/admin/likes') {
+        return sendJSON(res, 200, { likes });
+      }
+      if (method === 'DELETE' && pathname === '/api/admin/likes') {
+        const q = new URL(req.url, 'http://localhost').searchParams;
+        const id = q.get('id'); // 留空 = 全部清零
+        if (id) delete likes[id]; else Object.keys(likes).forEach((k) => delete likes[k]);
+        saveJSON(LIKE_FILE, likes);
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      /* ---- 黑名单管理：列表 + 拉黑 + 解封 ---- */
+      if (method === 'GET' && pathname === '/api/admin/banned') {
+        return sendJSON(res, 200, { banned });
+      }
+      if (method === 'POST' && pathname === '/api/admin/banned') {
+        const b = await readBody(req);
+        const bip = String(b.ip || '').trim();
+        if (!/^[\d.:a-fA-F]+$/.test(bip)) return sendJSON(res, 400, { error: 'IP 格式非法' });
+        if (!banned.includes(bip)) banned.push(bip);
+        saveBanned();
+        return sendJSON(res, 200, { ok: true });
+      }
+      if (method === 'DELETE' && pathname === '/api/admin/banned') {
+        const b = await readBody(req);
+        banned = banned.filter((x) => x !== String(b.ip || ''));
+        saveBanned();
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      /* ---- 可疑 IP（只读 + 一键拉黑复用上面 banned 接口） ---- */
+      if (method === 'GET' && pathname === '/api/admin/watch') {
+        return sendJSON(res, 200, { watch: watch.slice().sort((a, b2) => b2.count - a.count) });
+      }
+
+      /* ---- 访问统计（只读） ---- */
+      if (method === 'GET' && pathname === '/api/admin/visits') {
+        return sendJSON(res, 200, {
+          total: visits.total,
+          unique: visits.uips.length,
+          days: visits.days,
+          recent: visits.recent.slice(0, 60),
+        });
+      }
+
+      /* ---- 照片墙管理：列表 + 新增/更新 + 删除 + 排序 ---- */
+      if (method === 'GET' && pathname === '/api/admin/gallery') {
+        return sendJSON(res, 200, { photos: gallery });
+      }
+      if (method === 'POST' && pathname === '/api/admin/gallery') {
+        const b = await readBody(req);
+        const src = String(b.src || '').trim();
+        if (!src) return sendJSON(res, 400, { error: '缺少图片地址' });
+        if (!/^\/(uploads|img)\//.test(src) && !/^https?:\/\//.test(src)) return sendJSON(res, 400, { error: '图片地址必须以 /uploads/ /img/ 或 http(s) 开头' });
+        const item = {
+          id: uid(),
+          src,
+          title: String(b.title || '').trim().slice(0, 40) || '未命名',
+          rot: Math.max(-10, Math.min(10, Number(b.rot) || (Math.random() * 8 - 4))),
+          tape: ['pink', 'mint', 'amber', 'violet', 'sky'].includes(b.tape) ? b.tape : 'pink',
+          cap: String(b.cap || '').trim().slice(0, 60),
+        };
+        if (b.id) {
+          const i = gallery.findIndex((g) => g.id === b.id);
+          if (i >= 0) { item.id = b.id; gallery[i] = item; } else gallery.push(item);
+        } else gallery.push(item);
+        saveGallery();
+        return sendJSON(res, 200, { ok: true, photo: item });
+      }
+      if (method === 'DELETE' && pathname === '/api/admin/gallery') {
+        const b = await readBody(req);
+        gallery = gallery.filter((g) => g.id !== String(b.id || ''));
+        saveGallery();
         return sendJSON(res, 200, { ok: true });
       }
 

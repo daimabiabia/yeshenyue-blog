@@ -281,13 +281,16 @@
   /* ---- 资源网盘管理 ---- */
   const MAX_DRIVE = 30 * 1024 * 1024;
   let DRIVE_FILES = null;
+  let DRIVE_DL = {}; // 网盘下载计数
+  let GALLERY_LOADED = false;
+  let COMMENTS_LOADED = false;
+  let VISITORS_LOADED = false;
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
 
   async function loadDrive() {
-    const r = await fetch('/api/drive');
-    if (!r.ok) throw new Error('网盘接口不可用');
-    const j = await r.json();
+    const j = await api('GET', '/api/drive'); // 网盘已加密：带 admin token（服务端放行管理员）
     DRIVE_FILES = j.files || [];
+    DRIVE_DL = j.downloads || {};
     $('#d_stat').textContent = `（${j.fileCount || 0} 文件 · ${j.dirCount || 0} 目录 · ${fmtSize(j.totalSize || 0)}）`;
     renderDriveList();
   }
@@ -309,7 +312,7 @@
       const head = k === '/' ? '' : `<h3 class="hint" style="margin:14px 0 8px">📁 ${escapeHtml(k)}/</h3>`;
       const rows = g.files.map((f) =>
         `<div class="list-item"><div><strong>${escapeHtml(f.name)}</strong> <span class="hint">· ${fmtSize(f.size)} · ${new Date(f.mtime).toISOString().slice(0, 10)}</span></div>
-         <div class="row"><a class="btn mini alt" href="/api/drive/download?file=${encodeURIComponent(f.path)}" download>下载</a>
+         <div class="row"><a class="btn mini alt" href="/api/drive/download?file=${encodeURIComponent(f.path)}&token=${encodeURIComponent(token() || '')}" download>下载${DRIVE_DL[f.path] ? ` <span class="hint">×${DRIVE_DL[f.path]}</span>` : ''}</a>
          <button class="btn mini del" data-ddel="${escapeHtml(f.path)}">删除</button></div></div>`).join('')
         + g.dirs.map((d) =>
         `<div class="list-item"><div>📁 <strong>${escapeHtml(d.name)}/</strong> <span class="hint">· 目录</span></div>
@@ -370,6 +373,131 @@
     } catch (e) { showMsg('#d_passmsg', '修改失败：' + e.message, false); }
   }
 
+  /* ---- 照片墙管理 ---- */
+  async function loadGallery() {
+    const j = await api('GET', '/api/admin/gallery');
+    const photos = j.photos || [];
+    GALLERY_LOADED = true;
+    $('#g_count').textContent = `（${photos.length} 张）`;
+    const list = $('#g_list');
+    list.innerHTML = photos.length ? photos.map((p) => `
+      <div class="list-item">
+        <div style="display:flex;gap:12px;align-items:center">
+          <img src="${escapeHtml(p.src)}" alt="" style="width:64px;height:48px;object-fit:cover;border:2px solid #0a0a0a;border-radius:6px" />
+          <div><strong>${escapeHtml(p.title)}</strong> <span class="hint">· ${escapeHtml(p.src)}</span>
+          <br><span class="hint">胶带 ${escapeHtml(p.tape)} · 旋转 ${escapeHtml(String(p.rot))}°${p.cap ? ' · ' + escapeHtml(p.cap) : ''}</span></div>
+        </div>
+        <button class="btn mini" data-gid="${escapeHtml(p.id)}" data-gtitle="${escapeHtml(p.title)}">删除</button>
+      </div>`).join('') : '<p class="hint">墙上还没有照片。</p>';
+    list.querySelectorAll('button[data-gid]').forEach((b) => b.onclick = async () => {
+      if (!confirm(`删除照片「${b.dataset.gtitle}」？`)) return;
+      try {
+        await api('DELETE', '/api/admin/gallery', { id: b.dataset.gid });
+        showMsg('#g_msg', '已删除', true);
+        await loadGallery();
+      } catch (e) { showMsg('#g_msg', '删除失败：' + e.message, false); }
+    });
+  }
+  async function saveGalleryPhoto() {
+    const src = $('#g_src').value.trim();
+    if (!src) { showMsg('#g_msg', '请填写图片地址', false); return; }
+    try {
+      await api('POST', '/api/admin/gallery', {
+        src,
+        title: $('#g_title').value.trim(),
+        cap: $('#g_cap').value.trim(),
+        rot: Number($('#g_rot').value) || 0,
+        tape: $('#g_tape').value,
+      });
+      showMsg('#g_msg', '✓ 已贴上照片墙', true);
+      $('#g_src').value = ''; $('#g_title').value = ''; $('#g_cap').value = '';
+      await loadGallery();
+    } catch (e) { showMsg('#g_msg', '保存失败：' + e.message, false); }
+  }
+
+  /* ---- 留言管理 ---- */
+  async function loadComments() {
+    const j = await api('GET', '/api/admin/comments');
+    const list = j.comments || [];
+    COMMENTS_LOADED = true;
+    $('#cm_count').textContent = `（${list.length} 条）`;
+    const box = $('#cm_list');
+    box.innerHTML = list.length ? list.map((c) => `
+      <div class="list-item">
+        <div><strong>${escapeHtml(c.name || '匿名')}</strong> <span class="hint">· ${new Date(c.t).toLocaleString('zh-CN')} · 文章 ${escapeHtml((c.post || '').slice(0, 10))} · IP ${escapeHtml(c.ip || '-')}</span>
+          <br>${escapeHtml(c.text || '')}</div>
+        <button class="btn mini" data-cid="${escapeHtml(c.id || '')}">删除</button>
+      </div>`).join('') : '<p class="hint">还没有留言。</p>';
+    box.querySelectorAll('button[data-cid]').forEach((b) => b.onclick = async () => {
+      if (!confirm('删除这条留言？')) return;
+      try {
+        await api('DELETE', '/api/admin/comments?id=' + encodeURIComponent(b.dataset.cid));
+        showMsg('#saveMsg', '留言已删除', true);
+        await loadComments();
+      } catch (e) { showMsg('#saveMsg', '删除失败：' + e.message, false); }
+    });
+  }
+
+  /* ---- 访客与安全 ---- */
+  async function loadVisitors() {
+    const [v, bn, wt] = await Promise.all([
+      api('GET', '/api/admin/visits'),
+      api('GET', '/api/admin/banned'),
+      api('GET', '/api/admin/watch'),
+    ]);
+    VISITORS_LOADED = true;
+    const days = v.days || {};
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    $('#v_stats').innerHTML = `
+      <div><b>${v.total || 0}</b><span class="hint"> 总访问 PV</span></div>
+      <div><b>${v.unique || 0}</b><span class="hint"> 独立访客 UV</span></div>
+      <div><b>${days[today] || 0}</b><span class="hint"> 今日</span></div>
+      <div><b>${days[yesterday] || 0}</b><span class="hint"> 昨日</span></div>
+      <div><b>${(bn.banned || []).length}</b><span class="hint"> 黑名单</span></div>
+      <div><b>${(wt.watch || []).length}</b><span class="hint"> 可疑 IP</span></div>`;
+    const bl = $('#v_banlist');
+    bl.innerHTML = (bn.banned || []).length ? bn.banned.map((ip) => `
+      <span class="list-item" style="display:inline-flex;gap:8px;align-items:center;margin:0 8px 8px 0;padding:6px 12px">
+        <b class="mono">${escapeHtml(ip)}</b><button class="btn mini alt" data-unban="${escapeHtml(ip)}">解封</button></span>`).join('')
+      : '<p class="hint">黑名单为空，天下太平。</p>';
+    bl.querySelectorAll('button[data-unban]').forEach((b) => b.onclick = async () => {
+      try {
+        await api('DELETE', '/api/admin/banned', { ip: b.dataset.unban });
+        showMsg('#saveMsg', '已解封 ' + b.dataset.unban, true);
+        await loadVisitors();
+      } catch (e) { showMsg('#saveMsg', '解封失败：' + e.message, false); }
+    });
+    const wbox = $('#v_watch');
+    wbox.innerHTML = (wt.watch || []).length ? wt.watch.slice(0, 30).map((w) => `
+      <div class="list-item">
+        <div><b class="mono">${escapeHtml(w.ip)}</b> <span class="hint">· 失败 ${w.count} 次 · ${escapeHtml((w.reason || '').replace('admin-login-fail', '后台登录').replace('drive-unlock-fail', '网盘解锁'))} · ${new Date(w.last).toLocaleString('zh-CN')}</span></div>
+        <button class="btn mini" data-ban="${escapeHtml(w.ip)}">一键拉黑</button>
+      </div>`).join('') : '<p class="hint">暂无可疑行为记录。</p>';
+    wbox.querySelectorAll('button[data-ban]').forEach((b) => b.onclick = async () => {
+      try {
+        await api('POST', '/api/admin/banned', { ip: b.dataset.ban });
+        showMsg('#saveMsg', '已拉黑 ' + b.dataset.ban, true);
+        await loadVisitors();
+      } catch (e) { showMsg('#saveMsg', '拉黑失败：' + e.message, false); }
+    });
+    const rc = $('#v_recent');
+    rc.innerHTML = (v.recent || []).length ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr><th style="text-align:left;padding:6px;border-bottom:2px solid #0a0a0a">时间</th><th style="text-align:left;padding:6px;border-bottom:2px solid #0a0a0a">IP</th><th style="text-align:left;padding:6px;border-bottom:2px solid #0a0a0a">路径</th></tr></thead>
+      <tbody>${v.recent.map((r) => `<tr><td style="padding:5px 6px;border-bottom:1px solid #eee">${new Date(r.t).toLocaleTimeString('zh-CN')}</td><td style="padding:5px 6px;border-bottom:1px solid #eee" class="mono">${escapeHtml(r.ip)}</td><td style="padding:5px 6px;border-bottom:1px solid #eee" class="mono">${escapeHtml(r.path)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="hint">暂无访问记录。</p>';
+  }
+  async function banIp() {
+    const ip = $('#v_ip').value.trim();
+    if (!ip) { showMsg('#saveMsg', '请填写要拉黑的 IP', false); return; }
+    try {
+      await api('POST', '/api/admin/banned', { ip });
+      $('#v_ip').value = '';
+      showMsg('#saveMsg', '已拉黑 ' + ip, true);
+      await loadVisitors();
+    } catch (e) { showMsg('#saveMsg', '拉黑失败：' + e.message, false); }
+  }
+
   /* ---- 初始化 ---- */
   function init() {
     loadTheme();
@@ -388,12 +516,20 @@
     $('#d_upload').onclick = uploadDrive;
     $('#d_mkdir').onclick = mkdirDrive;
     $('#d_savepass').onclick = saveDrivePass;
+    $('#g_save').onclick = saveGalleryPhoto;
+    $('#g_refresh').onclick = () => loadGallery().catch((e) => showMsg('#g_msg', '刷新失败：' + e.message, false));
+    $('#cm_refresh').onclick = () => loadComments().catch((e) => showMsg('#saveMsg', '刷新失败：' + e.message, false));
+    $('#v_refresh').onclick = () => loadVisitors().catch((e) => showMsg('#saveMsg', '刷新失败：' + e.message, false));
+    $('#v_ban').onclick = banIp;
     $('#d_refresh').onclick = () => loadDrive().catch((e) => showMsg('#saveMsg', '刷新失败：' + e.message, false));
     document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');
-      ['posts', 'drive', 'site', 'pwd'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      ['posts', 'drive', 'gallery', 'comments', 'visitors', 'site', 'pwd'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
       if (b.dataset.tab === 'drive' && DRIVE_FILES === null) loadDrive().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
+      if (b.dataset.tab === 'gallery' && !GALLERY_LOADED) loadGallery().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
+      if (b.dataset.tab === 'comments' && !COMMENTS_LOADED) loadComments().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
+      if (b.dataset.tab === 'visitors' && !VISITORS_LOADED) loadVisitors().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
     });
     if (token()) enterDash();
   }

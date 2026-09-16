@@ -68,6 +68,9 @@
     <div class="tabs">
       <button data-tab="posts" class="on">文章管理</button>
       <button data-tab="drive">资源网盘</button>
+      <button data-tab="gallery">照片墙</button>
+      <button data-tab="comments">留言管理</button>
+      <button data-tab="visitors">访客与安全</button>
       <button data-tab="site">站点设置</button>
       <button data-tab="pwd">修改密码</button>
     </div>
@@ -168,9 +171,59 @@
       <div id="d_list"></div>
     </div>
 
+    <!-- 照片墙管理 -->
+    <div class="panel hidden" id="tab-gallery">
+      <div class="card" style="padding:16px;margin-bottom:16px">
+        <div class="field"><label>图片地址（/img/… 或 /uploads/… 或 https://…）</label><input id="g_src" placeholder="/uploads/xxx.jpg" /></div>
+        <div class="row">
+          <div class="field" style="flex:1"><label>标题</label><input id="g_title" placeholder="照片标题" /></div>
+          <div class="field" style="flex:1"><label>角标说明（可选）</label><input id="g_cap" placeholder="「一句话」" /></div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:1"><label>旋转角度（-10 ~ 10）</label><input id="g_rot" type="number" min="-10" max="10" value="0" /></div>
+          <div class="field" style="flex:1"><label>胶带颜色</label>
+            <select id="g_tape"><option value="pink">粉色</option><option value="mint">薄荷</option><option value="amber">琥珀</option><option value="violet">紫色</option><option value="sky">天蓝</option></select>
+          </div>
+          <div class="field" style="align-self:end"><button class="btn mini" id="g_save" type="button">保存照片</button></div>
+        </div>
+        <p class="hint" id="g_msg"></p>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <b>墙上的照片</b><span class="hint" id="g_count"></span>
+        <button class="btn ghost mini" id="g_refresh" style="margin-left:auto">↻ 刷新</button>
+      </div>
+      <div id="g_list"></div>
+    </div>
+
+    <!-- 留言管理 -->
+    <div class="panel hidden" id="tab-comments">
+      <div class="row" style="margin-bottom:10px">
+        <b>全部留言</b><span class="hint" id="cm_count"></span>
+        <button class="btn ghost mini" id="cm_refresh" style="margin-left:auto">↻ 刷新</button>
+      </div>
+      <div id="cm_list"></div>
+    </div>
+
+    <!-- 访客与安全 -->
+    <div class="panel hidden" id="tab-visitors">
+      <div class="card stats-bar" id="v_stats" style="margin-bottom:14px"></div>
+      <div class="row" style="margin-bottom:8px">
+        <b>🚫 IP 黑名单</b>
+        <button class="btn ghost mini" id="v_refresh" style="margin-left:auto">↻ 刷新</button>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <input id="v_ip" placeholder="封禁 IP（如 203.0.113.7）" style="flex:1" />
+        <button class="btn mini" id="v_ban" type="button">拉黑</button>
+      </div>
+      <div id="v_banlist" style="margin-bottom:16px"></div>
+      <b>👀 可疑 IP（登录 / 解锁失败自动记录）</b>
+      <div id="v_watch" style="margin:10px 0 16px"></div>
+      <b>🕒 最近访客</b>
+      <div id="v_recent" style="margin-top:10px"></div>
+    </div>
+
     <!-- 密码 -->
-    <div class="panel hidden" id="tab-pwd">
-      <div class="field"><label>当前密码</label><input type="password" id="p_cur" /></div>
+    <div class="panel hidden" id="tab-pwd">      <div class="field"><label>当前密码</label><input type="password" id="p_cur" /></div>
       <div class="field"><label>新密码</label><input type="password" id="p_new" /></div>
       <div class="field"><label>确认新密码</label><input type="password" id="p_new2" /></div>
       <button class="btn" id="savePwd">修改密码</button>

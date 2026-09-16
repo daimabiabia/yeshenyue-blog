@@ -18,6 +18,10 @@
   var DARK = ['#FF5CB8', '#FFE135', '#4FD2FF', '#C4FF3D', '#FF9A4D', '#B794FF'];
   var palette = CANDY;
 
+  /* 特效开关（fxcenter.js 定义；未加载时视为全开） */
+  var FXS = window.FXS || { get: function () { return true; } };
+  var isTouchDev = matchMedia('(hover: none), (pointer: coarse)').matches;
+
   var cv = document.createElement('canvas');
   cv.id = 'fx-canvas';
   cv.setAttribute('aria-hidden', 'true');
@@ -97,12 +101,12 @@
     else if (!document.hidden && parts.length) ensureLoop();
   });
 
-  function spawn(o) { parts.push(o); if (parts.length > 600) parts.splice(0, parts.length - 600); ensureLoop(); }
+  function spawn(o) { parts.push(o); if (parts.length > 400) parts.splice(0, parts.length - 400); ensureLoop(); }
 
   /* ---- 1) 鼠标拖尾：按距离节流生成糖果小方块 ---- */
   var lastX = -99, lastY = -99;
-  var isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
   function trail(x, y) {
+    if (isTouchDev || !FXS.get('trail')) return; /* 触屏设备禁用拖尾（防仿真鼠标风暴） */
     var dx = x - lastX, dy = y - lastY;
     if (dx * dx + dy * dy < 144) return; /* 距离 <12px 不生成 */
     lastX = x; lastY = y;
@@ -122,6 +126,7 @@
     return !!(t && t.closest && t.closest('input, textarea, select, #cmdk, #kbdHelp, #lightbox, .nav, a, button'));
   }
   function burst(x, y, n) {
+    if (!FXS.get('burst')) return;
     n = n || 16;
     var pal = themePalette();
     for (var i = 0; i < n; i++) {
@@ -145,6 +150,7 @@
 
   /* ---- 2.5) 冲击波：单发扩散圆环 ---- */
   function shockwave(x, y, color) {
+    if (!FXS.get('shock')) return;
     var pal = themePalette();
     spawn({
       x: x, y: y, vx: 0, vy: 0,
@@ -157,8 +163,9 @@
 
   /* ---- 2.6) 超级爆炸（长按蓄力释放）：60 粒 + 双冲击波 ---- */
   function megaBurst(x, y) {
+    if (!FXS.get('mega')) { fxEvent('fx:mega', { x: x, y: y }); return; }
     var pal = themePalette();
-    for (var i = 0; i < 60; i++) {
+    for (var i = 0; i < 48; i++) {
       var a = Math.random() * 6.2832;
       var sp = 3 + Math.random() * 9;
       spawn({
@@ -179,6 +186,7 @@
   var SEQ = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
   var seqIdx = 0;
   function candyRain() {
+    if (!FXS.get('konami')) return;
     var pal = themePalette();
     for (var i = 0; i < 90; i++) {
       spawn({
@@ -202,6 +210,7 @@
   /* ---- 4) Shift 彩虹轨迹：按住 Shift 拖出彩虹光带 ---- */
   var hue = 0, lastRX = -99, lastRY = -99;
   function rainbow(x, y) {
+    if (!FXS.get('rainbow')) return;
     var dx = x - lastRX, dy = y - lastRY;
     if (dx * dx + dy * dy < 100) return;
     lastRX = x; lastRY = y;
@@ -220,7 +229,7 @@
   var pressT = 0, pressX = 0, pressY = 0, chargeTimer = 0, suppressClick = false;
   function endPress() { clearInterval(chargeTimer); pressT = 0; }
   document.addEventListener('mousemove', function (e) {
-    if (e.shiftKey) { rainbow(e.clientX, e.clientY); return; }
+    if (e.shiftKey) { rainbow(e.clientX, e.clientY); if (FXS.get('trail')) trail(e.clientX, e.clientY); return; }
     trail(e.clientX, e.clientY);
   }, { passive: true });
   document.addEventListener('pointerdown', function (e) {
@@ -270,9 +279,10 @@
   var TILT_SEL = '.post, .cat, .foot-card, .cta';
   var tiltBound = false;
   function tilt() {
-    if (tiltBound) return;
+    if (tiltBound || isTouchDev || !FXS.get('tilt')) return;
     tiltBound = true;
     document.addEventListener('mousemove', function (e) {
+      if (!FXS.get('tilt')) return;
       var card = e.target && e.target.closest ? e.target.closest(TILT_SEL) : null;
       if (!card) return;
       var r = card.getBoundingClientRect();

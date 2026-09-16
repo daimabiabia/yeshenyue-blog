@@ -264,7 +264,7 @@
     $('#links').innerHTML = (s.friendLinks || []).map((l, i) =>
       `<a class="card ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url)}" target="_blank" rel="noopener"><h3>${escapeHtml(l.name)}</h3><p>${escapeHtml(l.desc || '')}</p></a>`).join('')
       || '<p class="hint">暂无友链，可在后台「站点设置」里添加。</p>';
-    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘']];
+    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/me', '主页']];
     if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
     $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
@@ -358,6 +358,8 @@
     const arch = $('#archive');
     if (arch) arch.hidden = true;
     const dv = $('#drive'); if (dv) dv.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
     $('#home').hidden = false;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '夜神月 · 物联网技术博客';
@@ -389,6 +391,8 @@
     $('#home').hidden = true;
     arch.hidden = false;
     const dv = $('#drive'); if (dv) dv.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '归档 · 夜神月博客';
     resetSeo();
@@ -444,6 +448,8 @@
     $('#reader').hidden = true;
     $('#home').hidden = true;
     const arch = $('#archive'); if (arch) arch.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     el.hidden = false;
     document.title = '资源网盘 · 夜神月博客';
@@ -617,6 +623,101 @@
     }
   }
   function closeDrivePreview() { const el = $('#drivePreview'); if (el) el.hidden = true; }
+
+  /* ============ 照片墙 #/gallery ============ */
+  async function viewGallery() {
+    const el = $('#gallery');
+    $('#reader').hidden = true; $('#home').hidden = true;
+    const arch = $('#archive'); if (arch) arch.hidden = true;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
+    el.hidden = false;
+    document.title = '照片墙 · 夜神月博客';
+    resetSeo();
+    el.innerHTML = '<section class="sec wrap"><div class="sec-head"><span class="kicker">GALLERY</span><h2>照片墙</h2></div><p class="hint">正在冲洗照片…</p></section>';
+    let photos = [];
+    try {
+      const r = await fetch('/api/gallery');
+      if (r.ok) { const j = await r.json(); photos = j.photos || []; }
+    } catch (e) {}
+    const cards = photos.map((p, i) => `
+      <figure class="g-photo" style="--rot:${Number(p.rot) || 0}deg;--dl:${(i % 8) * 0.07}s" data-src="${escapeAttr(p.src)}" data-title="${escapeAttr(p.title)}">
+        <span class="g-tape tape-${escapeAttr(p.tape || 'pink')}"></span>
+        <div class="g-frame"><img src="${escapeAttr(p.src)}" alt="${escapeAttr(p.title)}" loading="lazy" /></div>
+        <figcaption><b>${escapeHtml(p.title || '')}</b>${p.cap ? `<span class="g-cap mono">${escapeHtml(p.cap)}</span>` : ''}</figcaption>
+      </figure>`).join('');
+    el.innerHTML = `<section class="sec wrap">
+      <div class="sec-head"><span class="kicker">GALLERY</span><h2>照片墙</h2></div>
+      <p class="hint" style="margin-bottom:20px">共 ${photos.length} 张 — 点击照片放大 · 后台「照片墙管理」可增删改</p>
+      <div class="g-wall">${cards || '<p class="hint">墙上是空的，等主人来贴照片。</p>'}</div>
+    </section>`;
+    el.querySelectorAll('.g-photo').forEach((f) => f.addEventListener('click', () => {
+      const lb = $('#lightbox');
+      if (!lb) return;
+      lb.querySelector('img').src = f.dataset.src;
+      lb.hidden = false;
+    }));
+    window.scrollTo(0, 0);
+    if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
+  }
+
+  /* ============ 个人主页 #/me ============ */
+  function viewMe() {
+    const el = $('#me');
+    $('#reader').hidden = true; $('#home').hidden = true;
+    const arch = $('#archive'); if (arch) arch.hidden = true;
+    const dv = $('#drive'); if (dv) dv.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    el.hidden = false;
+    document.title = '关于夜神月 · 个人主页';
+    resetSeo();
+    const c = DATA.site.contact || {};
+    const skills = [
+      ['威胁狩猎', 92], ['红队渗透', 86], ['IoT 安全', 88], ['逆向分析', 74], ['应急响应', 80], ['安全开发', 70],
+    ];
+    const timeline = [
+      ['NOW', '高级威胁狩猎工程师 · 女娲安全工作室', '盯着每一条异常遥测，把猎物揪出来。'],
+      ['PHASE-2', '红队方向持续修炼', '内网渗透 / 逻辑漏洞 / 权限维持，武器库持续进化。'],
+      ['PHASE-1', 'IoT 全栈修炼 96 课', '从 ESP32 裸机到云端影子状态，一课一坑全记录。'],
+      ['ORIGIN', '「登神长阶」启动', '0 → 1，把学习过程本身做成作品。'],
+    ];
+    const skillRows = skills.map((s, i) => `
+      <div class="m-skill" style="--w:${s[1]}%;--dl:${i * 0.08}s"><span class="mono">${escapeHtml(s[0])}</span><i class="m-bar"><b></b></i><em class="mono">${s[1]}</em></div>`).join('');
+    const tlRows = timeline.map((t) => `
+      <div class="m-tl-item"><span class="m-tl-tag mono">${escapeHtml(t[0])}</span><div><b>${escapeHtml(t[1])}</b><p>${escapeHtml(t[2])}</p></div></div>`).join('');
+    el.innerHTML = `<section class="sec wrap">
+      <header class="m-hero">
+        <span class="badge mono">// THREAT HUNTING ENGINEER</span>
+        <h1 class="m-name">夜神月<span class="m-name-en mono">KIRA · YAGAMI LIGHT</span></h1>
+        <p class="term-line" data-text="> whoami — hunting threats before they hunt you. status: ONLINE"></p>
+        <div class="m-seals mono"><span>女娲安全工作室</span><span>Threat Hunter</span><span>IoT × Security</span></div>
+      </header>
+
+      <div class="m-grid">
+        <div class="card m-card">
+          <div class="sec-head"><span class="kicker">SKILLS</span><h2>能力矩阵</h2></div>
+          ${skillRows}
+        </div>
+        <div class="card m-card m-card-dark">
+          <div class="sec-head"><span class="kicker">TIMELINE</span><h2>行动记录</h2></div>
+          <div class="m-tl">${tlRows}</div>
+        </div>
+      </div>
+
+      <div class="m-contact card">
+        <div class="sec-head"><span class="kicker">CONTACT</span><h2>建立连接</h2></div>
+        <div class="links">
+          <a class="btn" href="mailto:${escapeAttr(c.email || '')}">📧 EMAIL</a>
+          <a class="btn alt" href="${escapeAttr(c.github || '#')}" target="_blank" rel="noopener">GITHUB</a>
+          <a class="btn ghost" href="#/gallery">🖼 相册</a>
+          <a class="btn ghost" href="#/drive">🗄 网盘</a>
+        </div>
+      </div>
+    </section>`;
+    window.scrollTo(0, 0);
+    if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
+    if (window.SFX && window.SFX.enabled) window.SFX.whoosh();
+  }
   function viewCat(id) {
     const c = DATA.site.categories.find((x) => x.id === id);
     if (!c) { viewHome(); return; }
@@ -624,6 +725,8 @@
     $('#reader').hidden = true; $('#home').hidden = false;
     const arch = $('#archive'); if (arch) arch.hidden = true;
     const dv = $('#drive'); if (dv) dv.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '栏目：' + c.name + ' · 夜神月博客';
     showList('栏目：' + c.name, list, false, { icon: c.icon, title: c.name, desc: c.desc, count: list.length });
@@ -636,6 +739,8 @@
     $('#reader').hidden = true; $('#home').hidden = false;
     const arch = $('#archive'); if (arch) arch.hidden = true;
     const dv = $('#drive'); if (dv) dv.hidden = true;
+    const gl = $('#gallery'); if (gl) gl.hidden = true;
+    const me = $('#me'); if (me) me.hidden = true;
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '标签：#' + t + ' · 夜神月博客';
     showList('标签：#' + t, list, false, { icon: 'wave', title: '#' + t, desc: '包含标签「' + t + '」的文章', count: list.length });
@@ -662,6 +767,8 @@
     </nav>`;
     const archEl = $('#archive'); if (archEl) archEl.hidden = true;
     const dvEl = $('#drive'); if (dvEl) dvEl.hidden = true;
+    const glEl = $('#gallery'); if (glEl) glEl.hidden = true;
+    const meEl = $('#me'); if (meEl) meEl.hidden = true;
     $('#reader').innerHTML = `
       <div class="article wrap">
         <a class="btn ghost back" href="#/">← 返回列表</a>
@@ -916,6 +1023,9 @@
     if (!q) {
       push({ kind: '动作', icon: '🎲', title: '随机抽一课', run: rollDice });
       push({ kind: '动作', icon: '🗄', title: '打开资源网盘', run: () => { location.hash = '#/drive'; } });
+      push({ kind: '动作', icon: '🖼', title: '打开照片墙', run: () => { location.hash = '#/gallery'; } });
+      push({ kind: '动作', icon: '🕶', title: '查看个人主页', run: () => { location.hash = '#/me'; } });
+      push({ kind: '动作', icon: '⚙️', title: '特效中心（开关全部特效）', run: () => { const p = $('#fxPanel'); if (p) { p.hidden = false; } } });
       push({ kind: '动作', icon: '🌓', title: '切换深浅主题', run: toggleTheme });
       push({ kind: '动作', icon: '⌨', title: '查看键盘快捷键', run: openKbdHelp });
       DATA.site.categories.forEach((c) =>
@@ -1014,6 +1124,8 @@
     else if (h.startsWith('#/tag/')) viewTag(decodeURIComponent(h.split('/')[2]));
     else if (h.startsWith('#/archive')) viewArchive();
     else if (h.startsWith('#/drive')) viewDrive();
+    else if (h.startsWith('#/gallery')) viewGallery();
+    else if (h.startsWith('#/me')) viewMe();
     else viewHome();
   }
 
@@ -1203,6 +1315,11 @@
       sb.addEventListener('click', syncSfxBtn);
     }
     if (window.FX && FX.ready) FX.tilt();
+    /* 看板娘：开关打开则加载；运行中切换开关即时显隐 */
+    if (window.FXS && window.FXS.get('waifu')) window.FXS.loadWaifu();
+    document.addEventListener('fxchange', function (e) {
+      if (e.detail && e.detail.key === 'waifu' && e.detail.on) window.FXS.loadWaifu();
+    });
     if (window.ACH) ACH.firstVisit();
     route();
   }

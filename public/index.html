@@ -23,6 +23,7 @@
     <div class="nav-actions">
       <button class="dice-btn" id="diceBtn" type="button" title="随机一课 (R)" aria-label="随机一课">🎲</button>
       <button class="dice-btn" id="sfxBtn" type="button" title="8-bit 音效开关 (S)" aria-label="音效开关">🔇</button>
+      <button class="dice-btn" id="fxBtn" type="button" title="特效中心 (Ctrl+E)" aria-label="特效中心">⚙️</button>
       <button class="kbd-hint-btn" id="kbdBtn" type="button" title="快捷键 (?)">⌨</button>
       <button class="theme-toggle" id="themeBtn" aria-label="切换深浅主题">🌙</button>
     </div>
@@ -137,6 +138,12 @@
 
     <!-- 资源网盘视图 -->
     <div id="drive" hidden></div>
+
+    <!-- 照片墙视图 -->
+    <div id="gallery" hidden></div>
+
+    <!-- 个人主页视图 -->
+    <div id="me" hidden></div>
   </main>
 
   <footer class="footer">
@@ -187,6 +194,17 @@
     </div>
   </div>
 
+  <!-- 特效中心开关面板 -->
+  <div id="fxPanel" hidden role="dialog" aria-modal="true" aria-label="特效中心">
+    <div class="cmdk-mask"></div>
+    <div class="cmdk-panel kbd-panel fx-panel">
+      <div class="cmdk-head"><b>⚙️ 特效中心</b><span class="cmdk-esc mono">ESC</span></div>
+      <p class="hint" style="margin:6px 14px 10px">按喜好自由开关全部特效，设置即时生效并保存在本机。</p>
+      <div class="fx-rows"></div>
+      <div class="cmdk-foot mono"><button class="btn ghost mini" id="fxReset" type="button">↺ 恢复默认</button> · <kbd>Ctrl</kbd>+<kbd>E</kbd> 呼出</div>
+    </div>
+  </div>
+
   <!-- 网盘文件预览弹层 -->
   <div id="drivePreview" hidden role="dialog" aria-modal="true" aria-label="文件预览">
     <div class="cmdk-mask"></div>
@@ -206,6 +224,7 @@
   <script src="/js/vendor/gsap.min.js"></script>
   <script src="/js/vendor/ScrollTrigger.min.js"></script>
   <script src="/js/motion.js"></script>
+  <script src="/js/fxcenter.js"></script>
   <script src="/js/fx.js"></script>
   <script src="/js/sfx.js"></script>
   <script src="/js/ach.js"></script>

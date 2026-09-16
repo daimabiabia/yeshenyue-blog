@@ -1,0 +1,178 @@
+/* 夜神月博客 · fxcenter.js 特效中心
+ * 统一管理全部特效开关：拖尾/点击爆炸/超级爆炸/冲击波/彩虹/Konami/卡片倾斜/音效/CRT/看板娘
+ * localStorage('fxSettings') 持久化，fx.js / live2d init 实时读取
+ * 面板：导航 ⚙ 按钮或 Ctrl+E 呼出
+ */
+(function () {
+  'use strict';
+  if (window.FXS) return;
+
+  var DEF = {
+    trail: 1,   /* 鼠标糖果拖尾 */
+    burst: 1,   /* 点击爆炸 */
+    mega: 1,    /* 长按超级爆炸 */
+    shock: 1,   /* 双击冲击波 / 蓄力环 */
+    rainbow: 1, /* Shift 彩虹轨迹 */
+    konami: 1,  /* Konami 糖果雨 */
+    tilt: 1,    /* 卡片 3D 倾斜 */
+    sfx: 0,     /* 8-bit 音效（默认关，与 SFX 内部状态同步） */
+    crt: 1,     /* CRT 扫描线 */
+    waifu: 1,   /* Live2D 看板娘 */
+  };
+  var S = {};
+  try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem('fxSettings') || '{}')); } catch (e) { S = Object.assign({}, DEF); }
+
+  function apply() {
+    document.documentElement.classList.toggle('fx-no-crt', !S.crt);
+    var w = document.getElementById('waifu');
+    if (w) w.style.display = S.waifu ? '' : 'none';
+    if (window.SFX) {
+      /* 与音效引擎同步（面板里改的 sfx 项映射到 SFX 自身开关） */
+      if (S.sfx !== (window.SFX.enabled ? 1 : 0)) window.SFX.toggle();
+    }
+  }
+
+  window.FXS = {
+    get: function (k) { return !!S[k]; },
+    set: function (k, v) {
+      S[k] = v ? 1 : 0;
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      apply();
+      try { document.dispatchEvent(new CustomEvent('fxchange', { detail: { key: k, on: !!S[k] } })); } catch (e) {}
+    },
+    all: function () { return Object.assign({}, S); },
+    reset: function () {
+      Object.keys(DEF).forEach(function (k) { S[k] = DEF[k]; });
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      apply();
+      renderPanel();
+    },
+  };
+
+  /* ---- 面板 ---- */
+  var META = [
+    ['trail', '🍬 鼠标糖果拖尾', '移动鼠标掉落彩色糖果'],
+    ['burst', '💥 点击爆炸', '点空白处喷发糖果碎片'],
+    ['mega', '⚡ 长按超级爆炸', '按住 0.6 秒释放 60 粒大爆炸'],
+    ['shock', '🌀 双击冲击波', '双击空白处扩散圆环'],
+    ['rainbow', '🌈 Shift 彩虹轨迹', '按住 Shift 拖出彩虹光带'],
+    ['konami', '🎮 Konami 糖果雨', '↑↑↓↓←→←→BA 触发彩蛋'],
+    ['tilt', '📇 卡片 3D 倾斜', '悬停卡片产生立体效果'],
+    ['sfx', '🔊 8-bit 音效', '像素风操作音（同 S 键）'],
+    ['crt', '📺 CRT 扫描线', '深色模式的复古扫描线质感'],
+    ['waifu', '🐕 看板娘', '右下角 Live2D 看板娘'],
+  ];
+
+  function ensurePanel() {
+    var box = document.getElementById('fxPanel');
+    if (!box || box._built) return box;
+    var rows = META.map(function (m) {
+      return '<label class="fx-row"><input type="checkbox" data-fx="' + m[0] + '" /><span class="fx-name">' + m[1] + '</span><span class="fx-desc hint">' + m[2] + '</span></label>';
+    }).join('');
+    var list = box.querySelector('.fx-rows');
+    if (list) list.innerHTML = rows;
+    box.querySelectorAll('input[data-fx]').forEach(function (cb) {
+      cb.addEventListener('change', function () { window.FXS.set(cb.dataset.fx, cb.checked); });
+    });
+    var rb = box.querySelector('#fxReset');
+    if (rb) rb.addEventListener('click', function () { window.FXS.reset(); });
+    var m = box.querySelector('.cmdk-mask');
+    if (m) m.addEventListener('click', function () { box.hidden = true; });
+    var esc = box.querySelector('.cmdk-esc');
+    if (esc) esc.addEventListener('click', function () { box.hidden = true; });
+    box._built = true;
+    return box;
+  }
+
+  function renderPanel() {
+    var box = ensurePanel();
+    if (!box) return;
+    var s = window.FXS.all();
+    box.querySelectorAll('input[data-fx]').forEach(function (cb) { cb.checked = !!s[cb.dataset.fx]; });
+  }
+
+  function openPanel() {
+    var box = ensurePanel();
+    if (!box) return;
+    renderPanel();
+    box.hidden = false;
+  }
+
+  /* 同步 SFX 实际状态到面板（音效可能被 S 键改变） */
+  function syncSfx() {
+    if (!window.SFX) return;
+    S.sfx = window.SFX.enabled ? 1 : 0;
+    try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    apply();
+    var btn = document.getElementById('fxBtn');
+    if (btn) btn.addEventListener('click', function () {
+      syncSfx();
+      var box = document.getElementById('fxPanel');
+      if (box) box.hidden = !box.hidden;
+      if (box && !box.hidden) renderPanel();
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        syncSfx();
+        var box = document.getElementById('fxPanel');
+        if (box) box.hidden = !box.hidden;
+        if (box && !box.hidden) renderPanel();
+      }
+      if (e.key === 'Escape') {
+        var p = document.getElementById('fxPanel');
+        if (p && !p.hidden) p.hidden = true;
+      }
+    });
+  });
+
+  /* 看板娘延迟加载：开关打开且尚未加载时调用 */
+  window.FXS.loadWaifu = function () {
+    if (!S.waifu) return;
+    if (window.__waifuLoaded || window.__waifuLoading) return;
+    window.__waifuLoading = true;
+    var base = '/js/live2d/';
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = base + 'waifu.css';
+    document.head.appendChild(link);
+    /* 图片跨域补丁（live2d 绘制需要） */
+    if (!window.__waifuImgPatched) {
+      window.__waifuImgPatched = true;
+      var OI = window.Image;
+      window.Image = function () {
+        var img = new OI();
+        try { img.crossOrigin = 'anonymous'; } catch (e) {}
+        return img;
+      };
+      window.Image.prototype = OI.prototype;
+    }
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src = base + 'waifu-tips.js';
+    s.onload = function () {
+      window.__waifuLoaded = true;
+      if (typeof window.initWidget === 'function') {
+        window.initWidget({
+          waifuPath: base + 'waifu-tips.json',
+          cubism2Path: base + 'live2d.min.js',
+          models: [
+            { paths: [base + 'models/shizuku/shizuku.model.json'] },
+            { paths: [base + 'models/z16/z16.model.json'] },
+          ],
+          tools: ['switch-model', 'switch-texture', 'photo', 'info', 'quit'],
+          logLevel: 'warn',
+          drag: true,
+        });
+        if (!S.waifu) {
+          var w = document.getElementById('waifu');
+          if (w) w.style.display = 'none';
+        }
+      }
+    };
+    document.head.appendChild(s);
+  };
+})();
