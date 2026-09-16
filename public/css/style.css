@@ -2199,8 +2199,10 @@ p:last-child { margin-bottom: 0; }
 .bg-scheme { padding: 8px 15px; border: 2px solid var(--line); border-radius: 999px; background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); cursor: pointer; transition: border-color .15s ease, background .15s ease; }
 .bg-scheme:hover { border-color: var(--ink); }
 .bg-scheme.on { border-color: var(--ink); background: var(--lime-soft); font-weight: 800; }
-.bg-custom-row { display: flex; gap: 10px; margin-bottom: 14px; }
-.bg-url-input { flex: 1; min-width: 0; padding: 9px 13px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); }
+.bg-custom-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.bg-url-input { flex: 1; min-width: 150px; padding: 9px 13px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); }
+.bg-custom-row .btn { flex-shrink: 0; }
+.bg-pick-status { margin: 0 0 10px; font-size: var(--fs-xs); color: var(--ink); opacity: .75; }
 .fx-bg-host .fx-row { grid-template-columns: auto 1fr auto; margin-bottom: 6px; padding: 10px 12px; }
 .fx-bg-host .fx-row .fx-name { white-space: nowrap; }
 .fx-bg-host .fx-row input[type="range"] { min-width: 120px; accent-color: #a3e635; }

@@ -97,8 +97,11 @@
         [['aurora', '🌌 极光'], ['circuit', '🔌 电路板'], ['grid', '📐 蓝图'], ['stars', '✨ 星野'], ['rain', '🟩 数字雨'], ['plain', '📄 素雅']]
           .map(function (s) { return '<button type="button" class="bg-scheme" data-scheme="' + s[0] + '">' + s[1] + '</button>'; }).join('') +
         '</div>' +
-        '<div class="bg-custom-row"><input type="url" id="bgCustomUrl" class="bg-url-input" placeholder="自定义壁纸 URL（http… 或 /img/…）" />' +
+        '<div class="bg-custom-row"><input type="url" id="bgCustomUrl" class="bg-url-input" placeholder="壁纸 URL（或直接选本地图片）" />' +
+        '<button type="button" class="btn" id="bgPick">📁 本地图片</button>' +
         '<button type="button" class="btn" id="bgApply">应用</button></div>' +
+        '<input type="file" id="bgFile" accept="image/*" hidden />' +
+        '<p class="bg-pick-status hint" id="bgPickStatus" hidden></p>' +
         '<label class="fx-row"><span class="fx-name">🖼 壁纸压暗</span><input type="range" id="bgDim" min="0" max="70" step="5" style="flex:1" /><em class="mono" id="bgDimVal">35%</em></label>';
       host.querySelectorAll('.bg-scheme').forEach(function (b) {
         b.addEventListener('click', function () { setScheme(b.dataset.scheme); });
@@ -110,6 +113,71 @@
         document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: url } }));
         renderBgUI();
       });
+      /* ---- 本地图片 → 文件资源管理器选择 → 压缩 → 设为壁纸 ---- */
+      var pickBtn = host.querySelector('#bgPick');
+      var fileInput = host.querySelector('#bgFile');
+      var status = host.querySelector('#bgPickStatus');
+      function pickStatus(msg) {
+        if (!status) return;
+        status.hidden = !msg;
+        status.textContent = msg || '';
+      }
+      /* 大图压缩：最长边 ≤1920，JPEG q0.85；quota 超了降级 1280/q0.7 再试 */
+      function compressToDataUrl(file, maxSide, quality) {
+        return new Promise(function (resolve, reject) {
+          var fr = new FileReader();
+          fr.onerror = function () { reject(new Error('读取文件失败')); };
+          fr.onload = function () {
+            var img = new Image();
+            img.onerror = function () { reject(new Error('无法解析为图片')); };
+            img.onload = function () {
+              var w = img.naturalWidth, h = img.naturalHeight;
+              var scale = Math.min(1, maxSide / Math.max(w, h));
+              var cv = document.createElement('canvas');
+              cv.width = Math.round(w * scale);
+              cv.height = Math.round(h * scale);
+              cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+              resolve(cv.toDataURL('image/jpeg', quality));
+            };
+            img.src = fr.result;
+          };
+          fr.readAsDataURL(file);
+        });
+      }
+      function applyLocalWallpaper(file) {
+        if (!file) return;
+        if (!/^image\//.test(file.type || '')) { pickStatus('⚠ 只支持图片文件'); return; }
+        pickStatus('⏳ 正在处理 ' + file.name + ' …');
+        compressToDataUrl(file, 1920, 0.85).then(function (dataUrl) {
+          document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: dataUrl } }));
+          var kb = Math.round(dataUrl.length * 3 / 4 / 1024);
+          pickStatus('✅ 已应用：' + file.name + '（压缩后 ' + kb + ' KB，保存在本机）');
+        }).catch(function (err) {
+          /* 首次失败多半是 localStorage 装不下 → 降级再压一遍 */
+          compressToDataUrl(file, 1280, 0.7).then(function (dataUrl) {
+            document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: dataUrl } }));
+            var kb = Math.round(dataUrl.length * 3 / 4 / 1024);
+            pickStatus('✅ 已应用（降级压缩 ' + kb + ' KB）：' + file.name);
+          }).catch(function () {
+            pickStatus('⚠ 应用失败：' + (err && err.message || '未知错误'));
+          });
+        });
+      }
+      if (pickBtn && fileInput) {
+        pickBtn.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () {
+          applyLocalWallpaper(fileInput.files && fileInput.files[0]);
+          fileInput.value = ''; /* 允许重复选同一张 */
+        });
+        /* 拖拽支持：把图片直接拖进面板背景区 */
+        host.addEventListener('dragover', function (e) { e.preventDefault(); });
+        host.addEventListener('drop', function (e) {
+          e.preventDefault();
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+            applyLocalWallpaper(e.dataTransfer.files[0]);
+          }
+        });
+      }
       var dim = host.querySelector('#bgDim');
       if (dim) dim.addEventListener('input', function () {
         /* input 事件：拖动中实时预览压暗（原 change 只在松手后生效，拖动全程无反馈） */
