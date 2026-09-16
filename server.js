@@ -213,7 +213,7 @@ function walkDrive(dir, base) {
   let items;
   try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return out; }
   for (const it of items) {
-    if (it.name.startsWith('.')) continue; // 隐藏文件不入盘
+    if (it.name.startsWith('.') || it.name === '_meta.json') continue; // 隐藏文件与元数据不入盘
     const full = path.join(dir, it.name);
     const rel = base ? base + '/' + it.name : it.name;
     if (it.isDirectory()) {
@@ -625,7 +625,10 @@ const server = http.createServer(async (req, res) => {
       const fileCount = files.filter((f) => f.type === 'file').length;
       const dirCount = files.filter((f) => f.type === 'dir').length;
       const totalSize = files.reduce((s, f) => s + (f.type === 'file' ? f.size : 0), 0);
-      return sendJSON(res, 200, { files, fileCount, dirCount, totalSize, downloads: driveDl });
+      /* 小白友好描述元数据：data/drive/_meta.json（不在文件树中出现） */
+      const driveMeta = loadJSON(path.join(DRIVE_DIR, '_meta.json'), {});
+      return sendJSON(res, 200, { files, fileCount, dirCount, totalSize, downloads: driveDl,
+        descs: driveMeta.files || {}, dirDescs: driveMeta.dirs || {} });
     }
 
     /* ---- 资源网盘：文本在线预览（仅白名单文本类型，需解锁） ---- */

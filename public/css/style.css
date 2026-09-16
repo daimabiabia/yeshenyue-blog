@@ -2290,3 +2290,40 @@ p:last-child { margin-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .bottle, .dm, .sea-waves i, .bd-stars span, .bd-raincol { animation: none; }
 }
+
+/* ============ IoT 学习路线图（0→1 主线） ============ */
+#iotpath-sec .hint { color: var(--ink-3); }
+.ip-stage { display: flex; gap: 18px; margin-bottom: 18px; transition: transform var(--t) ease, box-shadow var(--t) ease; }
+.ip-stage:hover { transform: translateX(4px); }
+.ip-rail { display: flex; flex-direction: column; align-items: center; width: 86px; flex: none; }
+.ip-no { font-family: var(--font-mono); font-weight: 700; font-size: 11px; letter-spacing: .08em; background: var(--ink); color: var(--page); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.ip-dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--ink); background: var(--page); margin-top: 12px; box-shadow: 2px 2px 0 var(--shadow, rgba(0,0,0,.15)); }
+.ip-line { flex: 1; width: 4px; margin-top: 6px; border-radius: 2px; opacity: .45; background: repeating-linear-gradient(180deg, var(--ink) 0 8px, transparent 8px 16px); }
+.ip-body { flex: 1; min-width: 0; }
+.ip-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ip-ico { font-size: 20px; line-height: 1; }
+.ip-head h3 { margin: 0; font-family: var(--font-display); font-size: var(--fs-lg); }
+.ip-goal { font-size: var(--fs-sm); font-weight: 600; color: var(--ink-2); }
+.ip-points { margin: 10px 0 12px; padding-left: 20px; color: var(--ink-2); font-size: var(--fs-sm); }
+.ip-points li { margin: 3px 0; }
+.ip-points li::marker { color: var(--ink-4); }
+.ip-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ip-post { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 13px; border: 2px solid var(--ink); border-radius: 999px; background: var(--page); color: var(--ink); font-weight: 700; font-size: var(--fs-xs); text-decoration: none; box-shadow: var(--sh-xs); transition: transform var(--t) var(--ease-back), box-shadow var(--t) ease, background var(--t) ease; }
+.ip-post:hover { transform: translate(-2px, -2px); box-shadow: var(--sh-sm); background: var(--yellow-soft); }
+.ip-post.done { background: var(--lime); }
+.ip-drive { display: inline-block; margin-top: 13px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; opacity: .85; }
+.ip-drive:hover { opacity: 1; color: var(--ink); }
+[data-theme=dark] .ip-goal { color: var(--ink-3); }
+[data-theme=dark] .ip-points { color: var(--ink-3); }
+@media (max-width: 720px) {
+  .ip-stage { gap: 12px; }
+  .ip-rail { width: 62px; }
+  .ip-no { font-size: 10px; padding: 2px 7px; }
+  .ip-head h3 { font-size: var(--fs-md); }
+  .ip-goal { width: 100%; }
+}
+
+/* ============ 网盘小白描述 ============ */
+.d-desc { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.d-name .d-desc { opacity: .85; }
+[data-theme=dark] .d-desc { color: var(--ink-3); }

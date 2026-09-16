@@ -10,7 +10,8 @@
     solder: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 40l24-24M30 8l8 8-6 6-8-8z"/><path d="M6 34l8 8"/></svg>',
     net: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><circle cx="24" cy="24" r="4" fill="currentColor"/><circle cx="10" cy="12" r="3.5"/><circle cx="38" cy="12" r="3.5"/><circle cx="10" cy="36" r="3.5"/><circle cx="38" cy="36" r="3.5"/><path d="M13 14l7 8M35 14l-7 8M13 34l7-8M35 34l-7-8"/></svg>',
     av: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><rect x="7" y="14" width="34" height="20" rx="3"/><path d="M20 19l9 5-9 5z" fill="currentColor" stroke="none"/></svg>',
-    home: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 24l16-14 16 14"/><path d="M12 22v16h24V22"/><path d="M24 38v-9"/><path d="M19 30a5 5 0 0 1 10 0"/></svg>'
+    home: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 24l16-14 16 14"/><path d="M12 22v16h24V22"/><path d="M24 38v-9"/><path d="M19 30a5 5 0 0 1 10 0"/></svg>',
+    book: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 8h20a6 6 0 0 1 6 6v26H14a6 6 0 0 1-6-6z"/><path d="M34 14h6v26h-6"/><path d="M14 16h14M14 24h14"/></svg>'
   };
   const CARD_BG = ['bg-pink', 'bg-yellow', 'bg-blue', 'bg-lime', 'bg-orange', 'bg-purple'];
   const $ = (s, r = document) => r.querySelector(s);
@@ -206,6 +207,54 @@
       </div>`).join('');
   }
 
+  /* ---- IoT 学习路线图：小白从 0 到 1 的主线任务（六站） ---- */
+  const IOT_PATH = [
+    { no: 'STEP 0', title: '先认识装备', color: 'bg-yellow', icon: '🧭',
+      goal: '知道物联网是什么、该买什么，不在第一步花冤枉钱',
+      points: ['搞懂物联网到底是什么', '选对第一块开发板', '备齐 150 元新手装备'],
+      posts: ['z1', 'z2', 'pmtyklsjvamim'], drive: '00-小白起步包' },
+    { no: 'STEP 1', title: '点亮第一盏灯', color: 'bg-lime', icon: '💡',
+      goal: '装好环境、烧录代码，亲眼看着 LED 闪起来',
+      points: ['Windows 环境手把手安装', '第一次烧录（卡 Connecting 别慌）', '读懂点灯代码的每一行'],
+      posts: ['z3', 'z4', 'e1'], drive: '00-小白起步包' },
+    { no: 'STEP 2', title: '让板子感知世界', color: 'bg-blue', icon: '🌡️',
+      goal: '接上传感器，读到现在环境的温度、湿度与距离',
+      points: ['GPIO / UART / I2C / SPI 四大接口', '温湿度传感器读数', 'ADC 采样入门'],
+      posts: ['e-i2c', 'e-uart', 'e-spi', 'e-adc'], drive: '07-传感器与执行器' },
+    { no: 'STEP 3', title: '让设备开口说话', color: 'bg-orange', icon: '📡',
+      goal: '设备和服务器之间能可靠地互传消息',
+      points: ['用微信群聊理解 MQTT', '串口乱码终结', '双板隔空传话实验'],
+      posts: ['pr1', 'e-uart', 'pP1', 'p1'], drive: '02-通信协议' },
+    { no: 'STEP 4', title: '连上网络与云', color: 'bg-purple', icon: '☁️',
+      goal: '数据上云，人不在家也能随时看到家里的状态',
+      points: ['家庭网络基础（IP / ping）', '树莓派家庭网关', '设备影子与断网自愈'],
+      posts: ['n1', 'n2', 'c1', 'p3'], drive: '03-云边协同' },
+    { no: 'STEP 5', title: '做出完整作品', color: 'bg-pink', icon: '🏆',
+      goal: '独立完成一个 7×24 运行的系统——写进简历那种',
+      points: ['智能开关 / 智能气象站', '低功耗 + OTA 稳定性工程', '把踩的坑写成文章'],
+      posts: ['s3', 'z6', 'pi-psu'], drive: '10-项目实战' }
+  ];
+  function renderIotPath() {
+    const el = $('#iotpath');
+    if (!el) return;
+    const read = getReadSet();
+    el.innerHTML = IOT_PATH.map((st, i) => {
+      const items = st.posts.map((id) => DATA.posts.find((p) => p.id === id)).filter(Boolean);
+      const chips = items.map((p) => {
+        const done = read.has(p.id);
+        return `<a class="ip-post${done ? ' done' : ''}" href="#/post/${p.id}" title="${escapeAttr(p.title)}">${done ? '✓ ' : ''}${escapeHtml(p.title)}</a>`;
+      }).join('');
+      const pts = st.points.map((pt) => `<li>${escapeHtml(pt)}</li>`).join('');
+      return `<div class="ip-stage card ${st.color} reveal in">
+        <div class="ip-rail"><span class="ip-no mono">${st.no}</span><span class="ip-dot"></span>${i < IOT_PATH.length - 1 ? '<span class="ip-line"></span>' : ''}</div>
+        <div class="ip-body">
+          <div class="ip-head"><span class="ip-ico">${st.icon}</span><h3>${escapeHtml(st.title)}</h3><span class="ip-goal">${escapeHtml(st.goal)}</span></div>
+          <ul class="ip-points">${pts}</ul>
+          <div class="ip-chips">${chips}</div>
+          <a class="ip-drive mono" href="#/drive">🗄 配套资料：${escapeHtml(st.drive)} →</a>
+        </div></div>`;
+    }).join('');
+  }
   /* ---- 主题 ---- */
   function loadTheme() {
     const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -311,6 +360,7 @@
     observeReveal();
     renderProgress();
     renderRoadmap();
+    renderIotPath();
     const tline = $('#termLine');
     if (tline) {
       if (window.Motion && window.Motion.ready) window.Motion.typeLine(tline);
@@ -326,7 +376,7 @@
   /* ---- 文章卡片 / 列表 ---- */
   /* 栏目 → 主题色（注入 --cat，驱动卡片左侧色条） */
   const CAT_COLOR = {
-    embedded: 'lime', protocol: 'blue', cloudedge: 'purple', pit: 'pink',
+    zero: 'yellow', embedded: 'lime', protocol: 'blue', cloudedge: 'purple', pit: 'pink',
     hardware: 'orange', net: 'blue', av: 'purple', smart: 'lime',
   };
   function postCard(p, feat) {
@@ -395,6 +445,7 @@
     bindSearch();
     renderProgress();
     renderRoadmap();
+    renderIotPath();
     renderFootprints();
     renderPickOfDay();
     renderHot();
@@ -424,7 +475,7 @@
     if ($('#readbar')) $('#readbar').hidden = true;
     document.title = '归档 · 夜神月博客';
     resetSeo();
-    const CAT_COLOR = { embedded: 'blue', protocol: 'purple', cloudedge: 'cyan', pit: 'red', hardware: 'orange', net: 'green', av: 'pink', smart: 'yellow' };
+    const CAT_COLOR = { zero: 'yellow', embedded: 'blue', protocol: 'purple', cloudedge: 'cyan', pit: 'red', hardware: 'orange', net: 'green', av: 'pink', smart: 'yellow' };
     const groups = {};
     for (const p of DATA.posts) {
       const ym = String(p.date || '').slice(0, 7) || '未知';
@@ -665,9 +716,11 @@
     const m = DRIVE.meta || {};
     /* 目录树：按路径深度缩进，右侧角标为该目录递归文件数 */
     const dirCount = (p) => DRIVE.files.filter((f) => f.type === 'file' && f.path.startsWith(p + '/')).length;
+    const dirDescsTree = (DRIVE.meta && DRIVE.meta.dirDescs) || {};
     const tree = (DRIVE.files || []).filter((f) => f.type === 'dir').map((d) => {
       const depth = d.path.split('/').length - 1;
-      return `<a class="dtree-item mono${DRIVE.dir === d.path ? ' on' : ''}" data-dir="${escapeAttr(d.path)}" style="padding-left:${10 + depth * 18}px" title="${escapeAttr(d.path)}">▸ ${escapeHtml(d.name)}/ <i class="dtree-n">${dirCount(d.path)}</i></a>`;
+      const tip = dirDescsTree[d.path] ? escapeAttr(dirDescsTree[d.path]) : escapeAttr(d.path);
+      return `<a class="dtree-item mono${DRIVE.dir === d.path ? ' on' : ''}" data-dir="${escapeAttr(d.path)}" style="padding-left:${10 + depth * 18}px" title="${tip}">▸ ${escapeHtml(d.name)}/ <i class="dtree-n">${dirCount(d.path)}</i></a>`;
     }).join('');
     /* 面包屑 */
     const segs = DRIVE.dir ? DRIVE.dir.split('/') : [];
@@ -690,16 +743,21 @@
       else rows.sort((a, b) => (a.type === b.type ? sgn * a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
     }
     const dls = DRIVE.meta && DRIVE.meta.downloads ? DRIVE.meta.downloads : {};
+    /* 小白友好描述：来自 _meta.json（服务端经 /api/drive 下发） */
+    const descs = (DRIVE.meta && DRIVE.meta.descs) || {};
+    const dirDescs = (DRIVE.meta && DRIVE.meta.dirDescs) || {};
     const rowHtml = rows.map((f) => {
       if (f.type === 'dir') {
+        const dd = dirDescs[f.path] ? `<span class="d-desc">${escapeHtml(dirDescs[f.path])}</span>` : '';
         return `<tr class="drow is-dir" data-dir="${escapeAttr(f.path)}">
-          <td class="d-name">📁 <b>${escapeHtml(f.name)}/</b></td><td class="d-size mono">—</td><td class="d-date mono">—</td><td class="d-act mono">进入 →</td></tr>`;
+          <td class="d-name">📁 <b>${escapeHtml(f.name)}/</b>${dd}</td><td class="d-size mono">—</td><td class="d-date mono">—</td><td class="d-act mono">进入 →</td></tr>`;
       }
       const canPreview = DRIVE_TEXT.includes(f.ext);
       const sub = DRIVE.q && f.path.includes('/') ? `<span class="d-sub mono">${escapeHtml(f.path.slice(0, f.path.lastIndexOf('/')))}/</span>` : '';
+      const desc = descs[f.path] ? `<span class="d-desc">${escapeHtml(descs[f.path])}</span>` : '';
       const dl = dls[f.path] || 0;
       return `<tr class="drow${canPreview ? ' is-text' : ''}" data-file="${escapeAttr(f.path)}" data-ext="${escapeAttr(f.ext)}">
-        <td class="d-name">${driveIcon(f.ext)} ${canPreview ? `<b class="d-open">${escapeHtml(f.name)}</b>` : escapeHtml(f.name)}${sub}</td>
+        <td class="d-name">${driveIcon(f.ext)} ${canPreview ? `<b class="d-open">${escapeHtml(f.name)}</b>` : escapeHtml(f.name)}${sub}${desc}</td>
         <td class="d-size mono">${fmtSize(f.size)}</td>
         <td class="d-date mono">${f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : ''}</td>
         <td class="d-act"><a class="btn mini alt" href="${driveURL(f.path, 'api/drive/download')}" download>⬇ 下载</a>${dl ? `<span class="d-dl mono" title="已被下载 ${dl} 次">×${dl}</span>` : ''}</td></tr>`;
