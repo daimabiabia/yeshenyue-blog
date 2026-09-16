@@ -1772,6 +1772,8 @@
       const on = SFX.toggle();
       const b = $('#sfxBtn');
       if (b) b.textContent = on ? '🔊' : '🔇';
+      /* 通知 fxcenter 同步 fxSettings.sfx 与面板勾选态（S 键与按钮共用此路径） */
+      document.dispatchEvent(new CustomEvent('sfxchange'));
     }
     const sb = $('#sfxBtn');
     if (sb) {

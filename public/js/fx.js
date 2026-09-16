@@ -123,7 +123,9 @@
 
   /* ---- 2) 点击爆炸：糖果碎片喷发 ---- */
   function isUiTarget(t) {
-    return !!(t && t.closest && t.closest('input, textarea, select, #cmdk, #kbdHelp, #lightbox, .nav, a, button'));
+    /* .cmdk-mask/.cmdk-panel 覆盖全部弹层（命令面板/快捷键帮助/特效中心/网盘预览），
+     * 否则点弹层遮罩时糖果在弹层背后炸开，看起来像乱触发 */
+    return !!(t && t.closest && t.closest('input, textarea, select, #cmdk, #kbdHelp, #lightbox, .cmdk-mask, .cmdk-panel, .nav, a, button'));
   }
   function burst(x, y, n) {
     if (!FXS.get('burst')) return;
@@ -229,6 +231,8 @@
   var pressT = 0, pressX = 0, pressY = 0, chargeTimer = 0, suppressClick = false;
   function endPress() { clearInterval(chargeTimer); pressT = 0; }
   document.addEventListener('mousemove', function (e) {
+    /* 弹层/导航上不撒糖果（canvas 在弹层之上，会盖住面板文字） */
+    if (isUiTarget(e.target)) return;
     if (e.shiftKey) { rainbow(e.clientX, e.clientY); if (FXS.get('trail')) trail(e.clientX, e.clientY); return; }
     trail(e.clientX, e.clientY);
   }, { passive: true });
@@ -236,6 +240,8 @@
     if (isUiTarget(e.target)) return;
     pressX = e.clientX; pressY = e.clientY;
     pressT = Date.now();
+    /* 蓄力只属于「超级爆炸」：mega 关闭时不冒蓄力环、不吞点击 */
+    if (!FXS.get('mega')) return;
     /* 蓄力视觉：按住期间周期性冒出蓄力环 */
     chargeTimer = setInterval(function () {
       shockwave(pressX + (Math.random() * 16 - 8), pressY + (Math.random() * 16 - 8));

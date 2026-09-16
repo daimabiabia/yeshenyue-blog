@@ -23,13 +23,27 @@
   var S = {};
   try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem('fxSettings') || '{}')); } catch (e) { S = Object.assign({}, DEF); }
 
+  function syncSfxIcon(on) {
+    var b = document.getElementById('sfxBtn');
+    if (b) b.textContent = on ? '🔊' : '🔇';
+  }
+
+  /* sfx 唯一事实源：引擎(SFX.enabled) 为准，fxSettings.sfx / 面板勾选 / 导航图标
+   * 全部通过 sfxchange 事件对齐（setSfx / app.js 的 S 键与按钮都汇到这里） */
+  function setSfx(on) {
+    if (window.SFX && (window.SFX.enabled ? 1 : 0) !== (on ? 1 : 0)) window.SFX.toggle();
+    try { document.dispatchEvent(new CustomEvent('sfxchange')); } catch (e) {}
+  }
+
   function apply() {
     document.documentElement.classList.toggle('fx-no-crt', !S.crt);
     var w = document.getElementById('waifu');
     if (w) w.style.display = S.waifu ? '' : 'none';
+    /* 与音效引擎同步（面板里改的 sfx 项映射到 SFX 自身开关） */
     if (window.SFX) {
-      /* 与音效引擎同步（面板里改的 sfx 项映射到 SFX 自身开关） */
-      if (S.sfx !== (window.SFX.enabled ? 1 : 0)) window.SFX.toggle();
+      var on = window.SFX.enabled;
+      if ((S.sfx ? 1 : 0) !== (on ? 1 : 0)) window.SFX.toggle();
+      syncSfxIcon(S.sfx ? 1 : 0);
     }
   }
 
@@ -47,6 +61,7 @@
       try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
       apply();
       renderPanel();
+      renderBgUI(); /* 背景方案高亮/压暗值一并回显（reset 前只刷开关不同步背景 UI） */
     },
   };
 
@@ -96,13 +111,19 @@
         renderBgUI();
       });
       var dim = host.querySelector('#bgDim');
-      if (dim) dim.addEventListener('change', function () {
-        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { dim: Number(dim.value) } }));
-        renderBgUI();
+      if (dim) dim.addEventListener('input', function () {
+        /* input 事件：拖动中实时预览压暗（原 change 只在松手后生效，拖动全程无反馈） */
+        var v = Number(dim.value);
+        var lab = host.querySelector('#bgDimVal');
+        if (lab) lab.textContent = v + '%';
+        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { dim: v } }));
       });
     }
     box.querySelectorAll('input[data-fx]').forEach(function (cb) {
-      cb.addEventListener('change', function () { window.FXS.set(cb.dataset.fx, cb.checked); });
+      cb.addEventListener('change', function () {
+        if (cb.dataset.fx === 'sfx') { setSfx(cb.checked); return; }
+        window.FXS.set(cb.dataset.fx, cb.checked);
+      });
     });
     var rb = box.querySelector('#fxReset');
     if (rb) rb.addEventListener('click', function () { window.FXS.reset(); });
@@ -154,6 +175,7 @@
     if (!window.SFX) return;
     S.sfx = window.SFX.enabled ? 1 : 0;
     try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+    syncSfxIcon(S.sfx ? 1 : 0);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -177,6 +199,17 @@
         var p = document.getElementById('fxPanel');
         if (p && !p.hidden) p.hidden = true;
       }
+      /* 注意：S 键音效开关由 app.js 全局快捷键处理（历史既有），这里不再重复注册，
+       * 否则同一次按键双方各 toggle 一次 → 状态错乱。本模块监听 sfxchange 保持同步。 */
+    });
+    /* S 键 / 导航按钮切换音效后，同步面板勾选态与 fxSettings */
+    document.addEventListener('sfxchange', function () {
+      if (!window.SFX) return;
+      S.sfx = window.SFX.enabled ? 1 : 0;
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      var cb = document.querySelector('#fxPanel input[data-fx="sfx"]');
+      if (cb) cb.checked = !!S.sfx;
+      syncSfxIcon(S.sfx ? 1 : 0);
     });
   });
 
