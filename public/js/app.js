@@ -261,10 +261,10 @@
     $('#footEmail').textContent = s.contact.email || '';
     $('#footEmail').href = 'mailto:' + (s.contact.email || '');
     $('#footGithub').href = s.contact.github || '#';
-    $('#links').innerHTML = (s.friendLinks || []).map((l, i) =>
-      `<a class="card ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url)}" target="_blank" rel="noopener"><h3>${escapeHtml(l.name)}</h3><p>${escapeHtml(l.desc || '')}</p></a>`).join('')
-      || '<p class="hint">暂无友链，可在后台「站点设置」里添加。</p>';
-    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/me', '主页']];
+    /* 友链入口徽标：漂流瓶数量跟随真实数据 */
+    const bc = document.querySelector('.bottle-cta .bc-txt b');
+    if (bc) bc.textContent = `海上有 ${(s.friendLinks || []).length} 只漂流瓶 →`;
+    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/links', '漂流瓶'], ['#/wall', '留言墙'], ['#/chat', '聊天室'], ['#/me', '主页']];
     if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
     $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
@@ -789,30 +789,329 @@
     if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
   }
 
+  /* ============ 友链 · 漂流瓶海湾 #/links ============ */
+  function viewLinks() {
+    const el = $('#linksPage');
+    document.title = '漂流瓶海湾 · 友链';
+    resetSeo();
+    const friends = (DATA.site.friendLinks || []);
+    const bottles = friends.map((l, i) => {
+      const hue = (i * 67 + Math.floor(strHash(l.name || String(i)))) % 360;
+      const drift = 14 + (strHash(l.name || '') % 10);
+      return `<button type="button" class="bottle" data-i="${i}"
+        style="--h:${hue};--dl:${-(i * 2.7) % 9}s;--drift:${drift}s;left:${(i % 5) * 19 + 6 + (strHash(l.name || '') % 7)}%;top:${28 + ((i * 37) % 46)}%">
+        <span class="bt-body">
+          <span class="bt-letter mono" style="--h:${hue}">${escapeHtml((l.name || '?').slice(0, 1))}</span>
+          <span class="bt-cork"></span>
+        </span>
+        <span class="bt-paper" aria-hidden="true">${escapeHtml(l.name)}</span>
+        <span class="bt-card" role="tooltip">
+          <b>${escapeHtml(l.name)}</b>
+          <p>${escapeHtml(l.desc || '这只瓶子没写自我介绍')}</p>
+          <span class="bt-go mono">→ 前往</span>
+        </span>
+      </button>`;
+    }).join('');
+    el.innerHTML = `<section class="sea-hero">
+      <div class="sea-sky">
+        <span class="sea-sun" aria-hidden="true"></span>
+        <p class="sea-slogan mono">&gt; net.scan('ocean') — 发现 ${friends.length} 个友邻信号</p>
+      </div>
+      <div class="sea-waves" aria-hidden="true"><i class="w1"></i><i class="w2"></i><i class="w3"></i></div>
+      <div class="sea-body">${bottles || '<p class="hint sea-empty">海上还没有漂流瓶 — 去后台「站点设置」投放一只。</p>'}
+        <p class="sea-tip mono">⬆ 鼠标悬停瓶身可预览 · 点击「前往」打开对方小岛</p>
+      </div>
+    </section>`;
+    el.hidden = false;
+    el.querySelectorAll('.bottle').forEach((bt) => {
+      bt.addEventListener('click', () => {
+        const f = friends[Number(bt.dataset.i)];
+        if (f && f.url) window.open(f.url, '_blank', 'noopener');
+      });
+    });
+    window.scrollTo(0, 0);
+    if (window.SFX && window.SFX.enabled) window.SFX.whoosh();
+  }
+  function strHash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+
+  /* ============ 创意留言墙 #/wall（弹幕跑道 + 便利贴墙） ============ */
+  const WALL_MOODS = [['happy', '😄'], ['love', '🥰'], ['cool', '😎'], ['tired', '🥱'], ['hack', '🧑‍💻']];
+  const WALL_NICK_KEY = 'wallNick';
+  function viewWall() {
+    const el = $('#wall');
+    document.title = '留言墙 · 信号发射站';
+    resetSeo();
+    el.innerHTML = `<section class="sec wrap">
+      <header class="sec-head"><span class="kicker">WALL</span><h2>信号发射站</h2></header>
+      <p class="hint" style="margin:0 0 14px">写下的每句话都会以弹幕划过雷达屏，同时贴上便签墙 · 点击任意便签可让它重新上天 📡</p>
+
+      <div class="radar-screen" id="radarScreen" aria-label="弹幕区">
+        <span class="radar-line" aria-hidden="true"></span>
+        <div class="danmaku-layer" id="dmLayer"></div>
+      </div>
+
+      <div class="wall-composer card">
+        <div class="wc-row">
+          <input id="wallNick" class="w-input" maxlength="24" placeholder="署名（可留空=匿名访客）" />
+          <div class="wc-moods" id="wallMoods" role="radiogroup" aria-label="心情"></div>
+          <div class="wc-colors" id="wallColors" role="radiogroup" aria-label="便签颜色"></div>
+        </div>
+        <div class="wc-row">
+          <input id="wallText" class="w-input w-grow" maxlength="160" placeholder="向全世界发射一条信号…（≤160 字）" />
+          <button type="button" class="btn" id="wallSend">📡 发射</button>
+        </div>
+        <span class="hint" id="wallTip" role="status"></span>
+      </div>
+
+      <h3 class="wall-sub mono">// STICKY WALL · 便签墙</h3>
+      <div class="sticky-grid" id="stickyGrid"><p class="hint">便签装运中…</p></div>
+    </section>`;
+    el.hidden = false;
+    /* 心情 / 颜色选择器 */
+    let mood = 'happy', color = (Math.random() * 6) | 0;
+    $('#wallMoods').innerHTML = WALL_MOODS.map(([k, e]) =>
+      `<button type="button" class="wc-mood${k === mood ? ' on' : ''}" data-mood="${k}">${e}</button>`).join('');
+    $('#wallColors').innerHTML = [0, 1, 2, 3, 4, 5].map((c) =>
+      `<button type="button" class="wc-color s${c}${c === color ? ' on' : ''}" data-color="${c}" aria-label="颜色${c + 1}"></button>`).join('');
+    $('#wallMoods').addEventListener('click', (e) => {
+      const b = e.target.closest('.wc-mood'); if (!b) return;
+      mood = b.dataset.mood;
+      $('#wallMoods').querySelectorAll('.wc-mood').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    $('#wallColors').addEventListener('click', (e) => {
+      const b = e.target.closest('.wc-color'); if (!b) return;
+      color = Number(b.dataset.color);
+      $('#wallColors').querySelectorAll('.wc-color').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    const nick = $('#wallNick');
+    try { nick.value = localStorage.getItem(WALL_NICK_KEY) || ''; } catch (e) {}
+    function launchDm(text, moodK, lane) {
+      const layer = $('#dmLayer'); if (!layer) return;
+      const emoji = (WALL_MOODS.find((m) => m[0] === moodK) || WALL_MOODS[0])[1];
+      const dm = document.createElement('span');
+      dm.className = 'dm';
+      dm.textContent = emoji + ' ' + text;
+      dm.style.top = (8 + (lane != null ? lane : (Math.random() * 4) | 0) * 22) + '%';
+      dm.style.animationDuration = (11 + Math.random() * 7).toFixed(1) + 's';
+      layer.appendChild(dm);
+      dm.addEventListener('animationend', () => dm.remove());
+    }
+    function noteHTML(n) {
+      const d = new Date(n.t);
+      const emo = (WALL_MOODS.find((m) => m[0] === n.mood) || WALL_MOODS[0])[1];
+      return `<div class="sticky s${n.color}" data-id="${escapeAttr(n.id)}" data-text="${escapeAttr(n.text)}" data-mood="${escapeAttr(n.mood)}">
+        <i class="st-tape" aria-hidden="true"></i>
+        <span class="st-emo">${emo}</span>
+        <p class="st-text">${escapeHtml(n.text)}</p>
+        <span class="st-meta mono">${escapeHtml(n.name)} · ${d.getMonth() + 1}/${d.getDate()}</span>
+      </div>`;
+    }
+    fetch('/api/wall').then((r) => r.json()).then((d) => {
+      const list = d.notes || [];
+      $('#stickyGrid').innerHTML = list.map(noteHTML).join('')
+        || '<p class="hint">墙上还空着，坐个第一张沙发？</p>';
+      list.slice(0, 12).forEach((n, i) => launchDm(n.text, n.mood, i % 4));
+      $('#stickyGrid').addEventListener('click', (e) => {
+        const st = e.target.closest('.sticky'); if (!st) return;
+        launchDm(st.dataset.text, st.dataset.mood);
+        if (window.SFX && window.SFX.enabled) window.SFX.click();
+      });
+    }).catch(() => { $('#stickyGrid').innerHTML = '<p class="hint">便签装运失败，稍后刷新再试。</p>'; });
+    function send() {
+      const text = $('#wallText').value.trim();
+      const tip = $('#wallTip');
+      if (!text) { tip.textContent = '先写点什么再发射～'; return; }
+      try { localStorage.setItem(WALL_NICK_KEY, nick.value.trim()); } catch (e) {}
+      $('#wallSend').disabled = true;
+      fetch('/api/wall', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nick.value.trim(), text, mood, color }),
+      }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))).then(({ ok, j }) => {
+        $('#wallSend').disabled = false;
+        if (!ok) { tip.textContent = j.error || '发射失败'; return; }
+        $('#wallText').value = ''; tip.textContent = '✓ 信号已上天！';
+        setTimeout(() => { tip.textContent = ''; }, 2200);
+        launchDm(j.note.text, j.note.mood);
+        const grid = $('#stickyGrid');
+        const empty = grid.querySelector('.hint'); if (empty) empty.remove();
+        grid.insertAdjacentHTML('afterbegin', noteHTML(j.note));
+        if (window.SFX && window.SFX.enabled) window.SFX.click();
+      }).catch(() => { $('#wallSend').disabled = false; tip.textContent = '网络异常，稍后再试'; });
+    }
+    $('#wallSend').addEventListener('click', send);
+    $('#wallText').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+    window.scrollTo(0, 0);
+  }
+
+  /* ============ 多人聊天室 #/chat ============ */
+  const CHAT_SID_KEY = 'chatSid';
+  let chatTimer = null;
+  function viewChat() {
+    const el = $('#chat');
+    document.title = '深夜电台 · 多人聊天室';
+    resetSeo();
+    let sess = null;
+    try { sess = JSON.parse(sessionStorage.getItem(CHAT_SID_KEY) || 'null'); } catch (e) {}
+    el.hidden = false;
+    if (!sess || !sess.id) return renderChatGate(el);
+    renderChatRoom(el, sess);
+  }
+  function renderChatGate(el) {
+    el.innerHTML = `<section class="sec wrap"><div class="chat-gate card">
+      <div class="sec-head"><span class="kicker">RADIO</span><h2>深夜电台 · 登机牌</h2></div>
+      <p class="hint">报上代号即可入场 —— 无需注册，代号只在本浏览器会话内有效。</p>
+      <div class="wc-row">
+        <input id="chatNick" class="w-input w-grow" maxlength="16" placeholder="你的代号（留空自动生成）" />
+        <button type="button" class="btn" id="chatEnter">🎧 接入电台</button>
+      </div>
+      <span class="hint" id="chatGateTip" role="status"></span>
+    </div></section>`;
+    const send = () => {
+      const name = $('#chatNick').value.trim();
+      const tip = $('#chatGateTip');
+      $('#chatEnter').disabled = true;
+      fetch('/api/chat/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+        .then((r) => r.json().then((j) => ({ ok: r.ok, j }))).then(({ ok, j }) => {
+          $('#chatEnter').disabled = false;
+          if (!ok) { tip.textContent = j.error || '接入失败'; return; }
+          try { sessionStorage.setItem(CHAT_SID_KEY, JSON.stringify(j)); } catch (e) {}
+          renderChatRoom(el, j);
+        }).catch(() => { $('#chatEnter').disabled = false; tip.textContent = '网络异常，稍后再试'; });
+    };
+    $('#chatEnter').addEventListener('click', send);
+    $('#chatNick').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+    window.scrollTo(0, 0);
+  }
+  function renderChatRoom(el, sess) {
+    let lastT = 0, firstLoad = true;
+    el.innerHTML = `<section class="chat-shell">
+      <header class="chat-top mono">
+        <span class="ct-live"><i></i>ON AIR</span>
+        <b>深夜电台 · FREQUENCY 77.2973</b>
+        <span class="ct-online" id="chatOnlineN">0</span>
+        <button type="button" class="btn ghost" id="chatExit">退出</button>
+      </header>
+      <div class="chat-main">
+        <div class="chat-stream" id="chatStream" aria-live="polite"></div>
+        <aside class="chat-side">
+          <h4 class="mono">// IN THE ROOM</h4>
+          <div id="chatUsers"><p class="hint">扫描中…</p></div>
+        </aside>
+      </div>
+      <footer class="chat-inputbar">
+        <span class="mono chat-me" style="--me:${escapeAttr(sess.color)}">${escapeHtml(sess.name)}</span>
+        <input id="chatText" class="w-input w-grow" maxlength="300" placeholder="对全频道说点什么…（Enter 发送）" />
+        <button type="button" class="btn" id="chatSend">发射</button>
+      </footer>
+      <span class="hint chat-tip" id="chatTip" role="status"></span>
+    </section>`;
+    const stream = $('#chatStream');
+    function msgHTML(m) {
+      if (m.sys) return `<div class="cm sys mono">— ${escapeHtml(m.text)} —</div>`;
+      const mine = m.uid === sess.id;
+      const d = new Date(m.t);
+      return `<div class="cm${mine ? ' mine' : ''}">
+        <span class="cm-ava" style="--h:${escapeAttr(m.color)}">${escapeHtml((m.name || '?').slice(0, 1))}</span>
+        <div class="cm-bubble"><span class="cm-name mono" style="color:${escapeAttr(m.color)}">${mine ? '我' : escapeHtml(m.name)}</span>
+        <p>${escapeHtml(m.text)}</p><span class="cm-t mono">${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}</span></div>
+      </div>`;
+    }
+    function renderUsers(online) {
+      $('#chatOnlineN').textContent = '在线 ' + online.length;
+      $('#chatUsers').innerHTML = online.map((u) =>
+        `<div class="cu${u.id === sess.id ? ' me' : ''}"><span class="cm-ava" style="--h:${escapeAttr(u.color)}">${escapeHtml((u.name || '?').slice(0, 1))}</span><span>${escapeHtml(u.name)}${u.id === sess.id ? '（你）' : ''}</span></div>`).join('')
+        || '<p class="hint">房间里只有你了…</p>';
+    }
+    function poll() {
+      fetch('/api/chat?since=' + lastT + '&hb=' + sess.id).then((r) => r.json()).then((d) => {
+        if (location.hash !== '#/chat') return;
+        const msgs = (firstLoad ? d.msgs.slice(-50) : d.msgs.filter((m) => m.t > lastT)) || [];
+        if (msgs.length) {
+          stream.insertAdjacentHTML('beforeend', msgs.map(msgHTML).join(''));
+          while (stream.children.length > 200) stream.firstChild.remove();
+          stream.scrollTop = stream.scrollHeight;
+          lastT = Math.max(lastT, ...msgs.map((m) => m.t));
+          if (!firstLoad && window.SFX && window.SFX.enabled) window.SFX.click();
+        }
+        firstLoad = false;
+        renderUsers(d.online || []);
+      }).catch(() => {});
+    }
+    poll();
+    chatTimer = setInterval(poll, 2200);
+    setInterval(() => { if (location.hash === '#/chat') fetch('/api/chat/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sess.id }) }).catch(() => {}); }, 15000);
+    function sendMsg() {
+      const inp = $('#chatText'), tip = $('#chatTip');
+      const text = inp.value.trim();
+      if (!text) return;
+      inp.value = '';
+      fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sess.id, text }) })
+        .then((r) => r.json().then((j) => ({ ok: r.ok, j }))).then(({ ok, j }) => {
+          if (!ok) { tip.textContent = j.error || '发送失败'; setTimeout(() => { tip.textContent = ''; }, 2000); }
+          else poll();
+        }).catch(() => { tip.textContent = '网络异常'; });
+    }
+    $('#chatSend').addEventListener('click', sendMsg);
+    $('#chatText').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
+    function leave() {
+      if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
+      try {
+        navigator.sendBeacon && navigator.sendBeacon('/api/chat/leave',
+          new Blob([JSON.stringify({ id: sess.id })], { type: 'application/json' }));
+      } catch (e) {}
+      try { sessionStorage.removeItem(CHAT_SID_KEY); } catch (e) {}
+    }
+    $('#chatExit').addEventListener('click', () => { leave(); location.hash = '#/'; });
+    window.addEventListener('beforeunload', leave, { once: true });
+    window.scrollTo(0, 0);
+    setTimeout(() => { const i = $('#chatText'); if (i) i.focus(); }, 100);
+  }
+
   /* ============ 个人主页 #/me ============ */
   function viewMe() {
     const el = $('#me');
-    $('#reader').hidden = true; $('#home').hidden = true;
-    const arch = $('#archive'); if (arch) arch.hidden = true;
-    const dv = $('#drive'); if (dv) dv.hidden = true;
-    const gl = $('#gallery'); if (gl) gl.hidden = true;
-    el.hidden = false;
     document.title = '关于夜神月 · 个人主页';
     resetSeo();
     const c = DATA.site.contact || {};
+    const posts = DATA.posts || [];
     const skills = [
       ['威胁狩猎', 92], ['红队渗透', 86], ['IoT 安全', 88], ['逆向分析', 74], ['应急响应', 80], ['安全开发', 70],
     ];
     const timeline = [
       ['NOW', '高级威胁狩猎工程师 · 女娲安全工作室', '盯着每一条异常遥测，把猎物揪出来。'],
       ['PHASE-2', '红队方向持续修炼', '内网渗透 / 逻辑漏洞 / 权限维持，武器库持续进化。'],
-      ['PHASE-1', 'IoT 全栈修炼 96 课', '从 ESP32 裸机到云端影子状态，一课一坑全记录。'],
+      ['PHASE-1', 'IoT 全栈修炼 ' + posts.length + ' 课', '从 ESP32 裸机到云端影子状态，一课一坑全记录。'],
       ['ORIGIN', '「登神长阶」启动', '0 → 1，把学习过程本身做成作品。'],
+    ];
+    const gear = [
+      ['🛰 主战线', '威胁狩猎 · 遥测分析 · 检测工程'],
+      ['🗡 武器库', '「悠然渗透武器库」197 tools / 10 categories'],
+      ['📡 博客矩阵', 'www.yyyrlovelsw.top · 本站全栈自研'],
+      ['🤝 战术协同', '鹿鹿（电厂蓝队）· www.lulu.sec'],
+      ['🧠 修炼支线', '销控证 / 易经奇门 / 红队（三线并行）'],
+      ['☕ 燃料', '咖啡因 · 深夜 · 「再抓一个就睡」'],
+    ];
+    const badges = [
+      ['🎯', '威胁狩猎'], ['🔴', '红队'], ['📡', 'IoT 安全'], ['🏗', '全栈自研'],
+      ['🧩', '逆向工程'], ['🛡', '蓝队视角'], ['✍️', '107 篇输出'], ['⚡', '24/7 ON CALL'],
+    ];
+    const stats = [
+      [String(posts.length), '篇学习笔记'],
+      [String((DATA.site.categories || []).length), '个专业方向'],
+      ['197', '件武器库藏兵'],
+      ['24/7', '狩猎在线'],
     ];
     const skillRows = skills.map((s, i) => `
       <div class="m-skill" style="--w:${s[1]}%;--dl:${i * 0.08}s"><span class="mono">${escapeHtml(s[0])}</span><i class="m-bar"><b></b></i><em class="mono">${s[1]}</em></div>`).join('');
     const tlRows = timeline.map((t) => `
       <div class="m-tl-item"><span class="m-tl-tag mono">${escapeHtml(t[0])}</span><div><b>${escapeHtml(t[1])}</b><p>${escapeHtml(t[2])}</p></div></div>`).join('');
+    const gearRows = gear.map((g) => `
+      <div class="m-gear"><span class="mg-ico">${g[0]}</span><div><b>${escapeHtml(g[1])}</b><p>${escapeHtml(g[2])}</p></div></div>`).join('');
+    const badgeRows = badges.map((b) => `
+      <span class="m-badge" title="${escapeAttr(b[1])}"><i>${b[0]}</i>${escapeHtml(b[1])}</span>`).join('');
+    const projRows = (c.projects || []).map((p) => `
+      <a class="m-proj card" href="${escapeAttr(p.url)}" target="_blank" rel="noopener"><b>${escapeHtml(p.name)}</b><span class="mono">↗ OPEN</span></a>`).join('')
+      || '<p class="hint">项目档案整理中…</p>';
     el.innerHTML = `<section class="sec wrap">
       <header class="m-hero">
         <span class="badge mono">// THREAT HUNTING ENGINEER</span>
@@ -820,6 +1119,10 @@
         <p class="term-line" data-text="> whoami — hunting threats before they hunt you. status: ONLINE"></p>
         <div class="m-seals mono"><span>女娲安全工作室</span><span>Threat Hunter</span><span>IoT × Security</span></div>
       </header>
+
+      <div class="m-stats">
+        ${stats.map((s2) => `<div class="m-stat card"><b class="mono">${escapeHtml(s2[0])}</b><span>${escapeHtml(s2[1])}</span></div>`).join('')}
+      </div>
 
       <div class="m-grid">
         <div class="card m-card">
@@ -832,6 +1135,24 @@
         </div>
       </div>
 
+      <blockquote class="m-motto card">
+        <p>「世界上没有真正的黑暗，只有尚未被狩猎照亮的地方。」</p>
+        <cite class="mono">— 座右铭 / MOTTO v2.0</cite>
+      </blockquote>
+
+      <div class="m-grid">
+        <div class="card m-card">
+          <div class="sec-head"><span class="kicker">GEAR</span><h2>装备与战线</h2></div>
+          <div class="m-gears">${gearRows}</div>
+        </div>
+        <div class="card m-card m-card-dark">
+          <div class="sec-head"><span class="kicker">BADGES</span><h2>徽章墙</h2></div>
+          <div class="m-badges">${badgeRows}</div>
+          <div class="sec-head" style="margin-top:18px"><span class="kicker">PROJECTS</span><h2>项目矩阵</h2></div>
+          <div class="m-projs">${projRows}</div>
+        </div>
+      </div>
+
       <div class="m-contact card">
         <div class="sec-head"><span class="kicker">CONTACT</span><h2>建立连接</h2></div>
         <div class="links">
@@ -839,9 +1160,12 @@
           <a class="btn alt" href="${escapeAttr(c.github || '#')}" target="_blank" rel="noopener">GITHUB</a>
           <a class="btn ghost" href="#/gallery">🖼 相册</a>
           <a class="btn ghost" href="#/drive">🗄 网盘</a>
+          <a class="btn ghost" href="#/links">🍾 漂流瓶友链</a>
+          <a class="btn ghost" href="#/chat">🎧 深夜电台</a>
         </div>
       </div>
     </section>`;
+    el.hidden = false;
     window.scrollTo(0, 0);
     if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
     if (window.SFX && window.SFX.enabled) window.SFX.whoosh();
@@ -1243,8 +1567,11 @@
       a.classList.toggle('active', t === h || (t.startsWith('#/') && h.startsWith(t) && t !== '#/'));
     });
   }
+  const VIEW_IDS = ['home', 'reader', 'archive', 'drive', 'gallery', 'me', 'linksPage', 'wall', 'chat'];
   function route() {
     if (window.Motion && window.Motion.ready) window.Motion.killAll();
+    /* 统一清扫全部视图容器，再由具体视图自行点亮自己 */
+    VIEW_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = true; });
     const h = location.hash || '#/';
     setNavActive(h);
     if (h.startsWith('#/post/')) viewArticle(h.split('/')[2]);
@@ -1253,6 +1580,9 @@
     else if (h.startsWith('#/archive')) viewArchive();
     else if (h.startsWith('#/drive')) viewDrive();
     else if (h.startsWith('#/gallery')) viewGallery();
+    else if (h.startsWith('#/links')) viewLinks();
+    else if (h.startsWith('#/wall')) viewWall();
+    else if (h.startsWith('#/chat')) viewChat();
     else if (h.startsWith('#/me')) viewMe();
     else viewHome();
   }

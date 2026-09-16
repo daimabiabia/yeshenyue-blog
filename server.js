@@ -90,6 +90,24 @@ function noteVisit(ip, pathname) {
 let comments = loadJSON(COMMENT_FILE, []);
 const lastCommentAt = new Map(); /* ip -> 上次留言时间戳，留言冷却用 */
 
+/* ---- 留言墙（便利贴）与聊天室存储 ---- */
+const WALL_FILE = path.join(DATA_DIR, 'wall.json');
+let wall = loadJSON(WALL_FILE, []);
+const lastWallAt = new Map();
+const CHAT_FILE = path.join(DATA_DIR, 'chat.json');
+let chat = loadJSON(CHAT_FILE, { msgs: [], online: [] });
+if (!Array.isArray(chat.msgs)) chat.msgs = [];
+if (!Array.isArray(chat.online)) chat.online = [];
+const lastChatAt = new Map(); /* 聊天发送冷却 */
+function saveChat() { saveJSON(CHAT_FILE, chat); }
+/* 在线名单 GC：45s 心跳超时即移除 */
+function pruneOnline() {
+  const now = Date.now();
+  const before = chat.online.length;
+  chat.online = chat.online.filter((u) => now - u.t < 45000);
+  return before - chat.online.length;
+}
+
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, Object.assign({
@@ -509,6 +527,95 @@ const server = http.createServer(async (req, res) => {
       saveJSON(COMMENT_FILE, comments);
       lastCommentAt.set(ip, now);
       return sendJSON(res, 200, { comment: item });
+    }
+
+    /* ---- 留言墙（便利贴墙 + 弹幕共用一份数据） ---- */
+    if (method === 'GET' && pathname === '/api/wall') {
+      return sendJSON(res, 200, { notes: wall.slice().sort((a, b2) => b2.t - a.t) });
+    }
+    if (method === 'POST' && pathname === '/api/wall') {
+      const ip = req.socket.remoteAddress || '';
+      const now = Date.now();
+      if (now - (lastWallAt.get(ip) || 0) < 4000) {
+        return sendJSON(res, 429, { error: '贴得太快，歇几秒再贴' });
+      }
+      const b = await readBody(req);
+      const text = String((b && b.text) || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      const name = String((b && b.name) || '').trim().slice(0, 24) || '匿名访客';
+      const mood = ['happy', 'love', 'cool', 'tired', 'hack'].includes(String(b && b.mood)) ? b.mood : 'happy';
+      const color = Number.isInteger(b && b.color) && b.color >= 0 && b.color <= 5 ? b.color : (Math.random() * 6) | 0;
+      if (!text) return sendJSON(res, 400, { error: '便签内容不能为空' });
+      const item = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), name, text, mood, color, t: now };
+      wall.push(item);
+      if (wall.length > 120) wall = wall.slice(-120);
+      saveJSON(WALL_FILE, wall);
+      lastWallAt.set(ip, now);
+      return sendJSON(res, 200, { note: item });
+    }
+
+    /* ---- 多人聊天室：join / poll / send / leave ---- */
+    if (method === 'POST' && pathname === '/api/chat/join') {
+      const b = await readBody(req);
+      const name = String((b && b.name) || '').trim().slice(0, 16) || '旅人' + ((Math.random() * 900 + 100) | 0);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const palette = ['#c4ff3d', '#61d6ff', '#ff7ab8', '#ffb454', '#b18cff', '#4ade80'];
+      const color = palette[(Math.random() * palette.length) | 0];
+      pruneOnline();
+      chat.online.push({ id, name, color, t: Date.now() });
+      chat.msgs.push({ sys: 1, id: 's' + id, text: name + ' 潜入了聊天室', t: Date.now() });
+      if (chat.msgs.length > 300) chat.msgs = chat.msgs.slice(-300);
+      saveChat();
+      return sendJSON(res, 200, { id, name, color });
+    }
+    if (method === 'GET' && pathname === '/api/chat') {
+      pruneOnline();
+      const q = new URL(req.url, 'http://localhost').searchParams;
+      /* 轮询即心跳：潜伏看聊天不发消息的成员也保持在线 */
+      const hb = q.get('hb');
+      if (hb) {
+        const u = chat.online.find((x) => x.id === hb);
+        if (u) u.t = Date.now();
+      }
+      const since = Number(q.get('since')) || 0;
+      const msgs = since ? chat.msgs.filter((m) => m.t > since) : chat.msgs.slice(-50);
+      return sendJSON(res, 200, { msgs, online: chat.online, now: Date.now() });
+    }
+    if (method === 'POST' && pathname === '/api/chat/send') {
+      const b = await readBody(req);
+      const uid = String((b && b.id) || '');
+      const u = chat.online.find((x) => x.id === uid);
+      if (!u) return sendJSON(res, 401, { error: '会话已过期，请重新进入' });
+      const now = Date.now();
+      if (now - (lastChatAt.get(uid) || 0) < 1200) {
+        return sendJSON(res, 429, { error: '打字太快啦' });
+      }
+      const text = String((b && b.text) || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+      if (!text) return sendJSON(res, 400, { error: '消息不能为空' });
+      const msg = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), uid, name: u.name, color: u.color, text, t: now };
+      chat.msgs.push(msg);
+      u.t = now;
+      if (chat.msgs.length > 300) chat.msgs = chat.msgs.slice(-300);
+      saveChat();
+      lastChatAt.set(uid, now);
+      return sendJSON(res, 200, { msg });
+    }
+    if (method === 'POST' && pathname === '/api/chat/ping') {
+      const b = await readBody(req);
+      const uid = String((b && b.id) || '');
+      const u = chat.online.find((x) => x.id === uid);
+      if (u) { u.t = Date.now(); saveChat(); }
+      return sendJSON(res, 200, { ok: true });
+    }
+    if (method === 'POST' && pathname === '/api/chat/leave') {
+      const b = await readBody(req);
+      const uid = String((b && b.id) || '');
+      const u = chat.online.find((x) => x.id === uid);
+      if (u) {
+        chat.online = chat.online.filter((x) => x.id !== uid);
+        chat.msgs.push({ sys: 1, id: 'l' + uid + Date.now().toString(36), text: u.name + ' 离开了', t: Date.now() });
+        saveChat();
+      }
+      return sendJSON(res, 200, { ok: true });
     }
 
     /* ---- 资源网盘：文件树（需网盘口令解锁，admin token 放行） ---- */

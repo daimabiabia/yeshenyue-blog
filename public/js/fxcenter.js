@@ -73,6 +73,34 @@
     }).join('');
     var list = box.querySelector('.fx-rows');
     if (list) list.innerHTML = rows;
+    /* ---- 背景定制区块 ---- */
+    var host = box.querySelector('.fx-bg-host');
+    if (host) {
+      host.innerHTML =
+        '<div class="sec-head" style="padding:0 0 8px"><span class="kicker">BACKDROP</span><h3 style="margin:0;font-size:15px">背景定制</h3></div>' +
+        '<div class="bg-schemes" role="radiogroup" aria-label="背景方案">' +
+        [['aurora', '🌌 极光'], ['circuit', '🔌 电路板'], ['grid', '📐 蓝图'], ['stars', '✨ 星野'], ['rain', '🟩 数字雨'], ['plain', '📄 素雅']]
+          .map(function (s) { return '<button type="button" class="bg-scheme" data-scheme="' + s[0] + '">' + s[1] + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="bg-custom-row"><input type="url" id="bgCustomUrl" class="bg-url-input" placeholder="自定义壁纸 URL（http… 或 /img/…）" />' +
+        '<button type="button" class="btn" id="bgApply">应用</button></div>' +
+        '<label class="fx-row"><span class="fx-name">🖼 壁纸压暗</span><input type="range" id="bgDim" min="0" max="70" step="5" style="flex:1" /><em class="mono" id="bgDimVal">35%</em></label>';
+      host.querySelectorAll('.bg-scheme').forEach(function (b) {
+        b.addEventListener('click', function () { setScheme(b.dataset.scheme); });
+      });
+      var applyBtn = host.querySelector('#bgApply');
+      if (applyBtn) applyBtn.addEventListener('click', function () {
+        var inp = host.querySelector('#bgCustomUrl');
+        var url = (inp && inp.value || '').trim();
+        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: url } }));
+        renderBgUI();
+      });
+      var dim = host.querySelector('#bgDim');
+      if (dim) dim.addEventListener('change', function () {
+        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { dim: Number(dim.value) } }));
+        renderBgUI();
+      });
+    }
     box.querySelectorAll('input[data-fx]').forEach(function (cb) {
       cb.addEventListener('change', function () { window.FXS.set(cb.dataset.fx, cb.checked); });
     });
@@ -84,6 +112,27 @@
     if (esc) esc.addEventListener('click', function () { box.hidden = true; });
     box._built = true;
     return box;
+  }
+
+  function getBgCfg() {
+    try { return JSON.parse(localStorage.getItem('ysyBg') || '{}'); } catch (e) { return {}; }
+  }
+  function setScheme(scheme) {
+    document.dispatchEvent(new CustomEvent('bgscheme', { detail: { scheme: scheme } }));
+    renderBgUI();
+  }
+  function renderBgUI() {
+    var box = document.getElementById('fxPanel');
+    if (!box) return;
+    var cfg = getBgCfg();
+    var scheme = cfg.scheme || 'aurora';
+    box.querySelectorAll('.bg-scheme').forEach(function (b) { b.classList.toggle('on', b.dataset.scheme === scheme); });
+    var url = box.querySelector('#bgCustomUrl');
+    if (url && document.activeElement !== url) url.value = cfg.custom || '';
+    var dim = box.querySelector('#bgDim');
+    var dimVal = box.querySelector('#bgDimVal');
+    if (dim) dim.value = typeof cfg.dim === 'number' ? cfg.dim : 35;
+    if (dimVal) dimVal.textContent = (typeof cfg.dim === 'number' ? cfg.dim : 35) + '%';
   }
 
   function renderPanel() {
@@ -114,7 +163,7 @@
       syncSfx();
       var box = document.getElementById('fxPanel');
       if (box) box.hidden = !box.hidden;
-      if (box && !box.hidden) renderPanel();
+      if (box && !box.hidden) { renderPanel(); renderBgUI(); }
     });
     document.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
@@ -122,7 +171,7 @@
         syncSfx();
         var box = document.getElementById('fxPanel');
         if (box) box.hidden = !box.hidden;
-        if (box && !box.hidden) renderPanel();
+        if (box && !box.hidden) { renderPanel(); renderBgUI(); }
       }
       if (e.key === 'Escape') {
         var p = document.getElementById('fxPanel');

@@ -158,7 +158,18 @@
         }
       ]
     },
-    "friendLinks": []
+    "friendLinks": [
+      {
+        "name": "鹿鹿的阵地",
+        "url": "https://www.lulu.sec",
+        "desc": "电厂蓝队 · 鹿鹿的安全博客"
+      },
+      {
+        "name": "悠然的窝",
+        "url": "https://www.yyyrlovelsw.top",
+        "desc": "悠然安全工作室 · 主博客 WordPress"
+      }
+    ]
   },
   "posts": [
     {
