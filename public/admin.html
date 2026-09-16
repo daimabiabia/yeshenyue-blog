@@ -66,18 +66,36 @@
   <!-- 管理主区 -->
   <div class="admin hidden" id="dashView">
     <div class="tabs">
-      <button data-tab="posts" class="on">文章管理</button>
-      <button data-tab="drive">资源网盘</button>
-      <button data-tab="gallery">照片墙</button>
-      <button data-tab="comments">留言管理</button>
-      <button data-tab="visitors">访客与安全</button>
-      <button data-tab="site">站点设置</button>
-      <button data-tab="pwd">修改密码</button>
+      <button data-tab="overview" class="on">📊 概览</button>
+      <button data-tab="posts">📝 文章</button>
+      <button data-tab="drive">🗄 网盘</button>
+      <button data-tab="gallery">🖼 照片墙</button>
+      <button data-tab="comments">💬 留言</button>
+      <button data-tab="visitors">🛡 安全</button>
+      <button data-tab="site">⚙ 设置</button>
     </div>
     <p class="ok" id="saveMsg"></p>
 
-    <!-- 文章 -->
-    <div class="panel" id="tab-posts">
+    <!-- 概览仪表盘 -->
+    <div class="panel" id="tab-overview">
+      <div class="card stats-bar" id="ovCards" style="margin-bottom:16px">
+        <p class="hint">正在加载概览…</p>
+      </div>
+      <div class="card" style="padding:16px">
+        <h3 style="margin-top:0">快捷操作</h3>
+        <div class="row">
+          <button class="btn" data-goto="posts">📝 写文章 / 管理文章</button>
+          <button class="btn alt" data-goto="drive">🗄 传文件到网盘</button>
+          <button class="btn alt" data-goto="gallery">🖼 加照片</button>
+          <button class="btn ghost" data-goto="visitors">🛡 查访客 / 封 IP</button>
+          <button class="btn ghost" data-goto="site">⚙ 改站点设置</button>
+        </div>
+        <p class="hint" style="margin-bottom:0">提示：网盘与照片墙、留言等数据在进入对应页签时自动加载。</p>
+      </div>
+    </div>
+
+    <!-- 文章（不再默认显示，登录后先进概览） -->
+    <div class="panel hidden" id="tab-posts">
       <div class="card stats-bar" id="statsBar" style="margin-bottom:14px"></div>
       <div class="row" style="margin-bottom:14px">
         <button class="btn" id="newPost">+ 写新文章</button>
@@ -156,7 +174,7 @@
       </div>
       <div class="card" style="padding:16px;margin-bottom:16px;border-left:6px solid #d97706">
         <b>🔒 网盘访问口令</b>
-        <p class="hint">修改后所有已解锁访客立即失效，需用新口令重新解锁。初始口令：iot-2026</p>
+        <p class="hint">修改后所有已解锁访客立即失效，需用新口令重新解锁。</p>
         <div class="row">
           <input type="password" id="d_pass" placeholder="新访问口令（至少 4 位）" style="flex:1" autocomplete="new-password" />
           <button class="btn mini" id="d_savepass" type="button">修改口令</button>
@@ -220,13 +238,16 @@
       <div id="v_watch" style="margin:10px 0 16px"></div>
       <b>🕒 最近访客</b>
       <div id="v_recent" style="margin-top:10px"></div>
-    </div>
 
-    <!-- 密码 -->
-    <div class="panel hidden" id="tab-pwd">      <div class="field"><label>当前密码</label><input type="password" id="p_cur" /></div>
-      <div class="field"><label>新密码</label><input type="password" id="p_new" /></div>
-      <div class="field"><label>确认新密码</label><input type="password" id="p_new2" /></div>
-      <button class="btn" id="savePwd">修改密码</button>
+      <div class="card" style="padding:16px;margin-top:18px;border-left:6px solid #c0143c">
+        <b>🔑 管理员密码</b>
+        <p class="hint">修改后其他已登录设备会话仍然有效；下次登录用新密码。</p>
+        <div class="field"><label>当前密码</label><input type="password" id="p_cur" autocomplete="current-password" /></div>
+        <div class="field"><label>新密码</label><input type="password" id="p_new" autocomplete="new-password" /></div>
+        <div class="field"><label>确认新密码</label><input type="password" id="p_new2" autocomplete="new-password" /></div>
+        <button class="btn" id="savePwd">修改密码</button>
+        <p class="hint" id="p_msg"></p>
+      </div>
     </div>
   </div>
 

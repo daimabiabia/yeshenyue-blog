@@ -264,10 +264,38 @@
     /* 友链入口徽标：漂流瓶数量跟随真实数据 */
     const bc = document.querySelector('.bottle-cta .bc-txt b');
     if (bc) bc.textContent = `海上有 ${(s.friendLinks || []).length} 只漂流瓶 →`;
-    const NAV = [['#/', '首页'], ['#cats', '栏目'], ['#tags', '标签'], ['#/archive', '归档'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/links', '漂流瓶'], ['#/wall', '留言墙'], ['#/chat', '聊天室'], ['#/me', '主页']];
-    if (!window.IS_STATIC_BLOG) NAV.push(['/admin', '后台管理']);
+    /* 导航分组：顶级 6 项（2 个下拉），不再把 10 个入口全堆在一行 */
+    const NAV_FLAT = [['#/', '首页'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/me', '主页']];
+    const NAV_DROPS = [
+      ['content', '内容', [['#cats', '📂 栏目'], ['#tags', '🏷 标签'], ['#/archive', '🗂 归档']]],
+      ['fun', '互动', [['#/links', '🍾 漂流瓶'], ['#/wall', '📡 留言墙'], ['#/chat', '🎧 聊天室']]],
+    ];
+    if (!window.IS_STATIC_BLOG) NAV_FLAT.push(['/admin', '后台']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
-    $('#navLinks').innerHTML = NAV.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
+    const navHtml =
+      NAV_FLAT.slice(0, 1).map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('') +
+      NAV_DROPS.map(([id, label, items]) =>
+        `<div class="nav-drop" id="drop-${id}"><button type="button" class="nav-drop-btn" aria-expanded="false">${label} <i class="mono">▾</i></button>` +
+        `<div class="nav-drop-panel">` + items.map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('') + `</div></div>`
+      ).join('') +
+      NAV_FLAT.slice(1).map(([h, t]) => `<a href="${h}" data-nav="${h}">${t}</a>`).join('');
+    $('#navLinks').innerHTML = navHtml;
+    /* 下拉交互：点击切展开（触屏友好），hover 由 CSS 处理；点击子项/别处收起 */
+    document.querySelectorAll('.nav-drop').forEach((d) => {
+      const btn = d.querySelector('.nav-drop-btn');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = d.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        document.querySelectorAll('.nav-drop.open').forEach((o) => { if (o !== d) { o.classList.remove('open'); o.querySelector('.nav-drop-btn').setAttribute('aria-expanded', 'false'); } });
+      });
+      d.querySelectorAll('.nav-drop-panel a').forEach((a) => a.addEventListener('click', () => d.classList.remove('open')));
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.nav-drop')) {
+        document.querySelectorAll('.nav-drop.open').forEach((o) => { o.classList.remove('open'); o.querySelector('.nav-drop-btn').setAttribute('aria-expanded', 'false'); });
+      }
+    });
     $('#navLinks').querySelectorAll('a').forEach((a) => {
       a.addEventListener('click', (e) => {
         const t = a.getAttribute('data-nav');
@@ -1562,9 +1590,13 @@
 
   /* ---- 路由 ---- */
   function setNavActive(h) {
-    $('#navLinks').querySelectorAll('a').forEach((a) => {
+    $('#navLinks').querySelectorAll('a[data-nav]').forEach((a) => {
       const t = a.getAttribute('data-nav');
       a.classList.toggle('active', t === h || (t.startsWith('#/') && h.startsWith(t) && t !== '#/'));
+    });
+    /* 子项命中时点亮所属下拉的顶级按钮 */
+    document.querySelectorAll('.nav-drop').forEach((d) => {
+      d.querySelector('.nav-drop-btn').classList.toggle('active', !!d.querySelector('a.active'));
     });
   }
   const VIEW_IDS = ['home', 'reader', 'archive', 'drive', 'gallery', 'me', 'linksPage', 'wall', 'chat'];

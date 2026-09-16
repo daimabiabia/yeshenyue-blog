@@ -72,10 +72,39 @@
       const d = await api('GET', '/api/admin');
       SITE = d.site; POSTS = d.posts || [];
       renderPosts(); renderSiteForm(); renderStats();
+      loadOverview().catch(() => {});
       showMsg('#loginMsg', '', true);
     } catch (e) {
       // api 内部 401 已触发 logout，这里无需重复处理
     }
+  }
+
+  /* ---- 概览仪表盘：一次拉全站核心数据 ---- */
+  async function loadOverview() {
+    const box = $('#ovCards');
+    if (!box) return;
+    box.innerHTML = '<p class="hint">正在加载概览…</p>';
+    const [drive, gallery, comments, visits, banned, wall] = await Promise.all([
+      api('GET', '/api/drive').catch(() => null),
+      api('GET', '/api/admin/gallery').catch(() => null),
+      api('GET', '/api/admin/comments').catch(() => null),
+      api('GET', '/api/admin/visits').catch(() => null),
+      api('GET', '/api/admin/banned').catch(() => null),
+      fetch('/api/wall').then((r) => r.json()).catch(() => null),
+    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const cards = [
+      ['📝', POSTS.length, '文章'],
+      ['🗄', drive ? (drive.fileCount || 0) : '–', '网盘文件'],
+      ['🖼', gallery ? (gallery.photos || []).length : '–', '照片'],
+      ['💬', comments ? (comments.comments || []).length : '–', '文章留言'],
+      ['🍾', wall && wall.notes ? wall.notes.length : '–', '漂流便签'],
+      ['👀', visits ? (visits.total || 0) : '–', '总 PV'],
+      ['📅', visits && visits.days ? (visits.days[today] || 0) : '–', '今日 PV'],
+      ['🚫', banned ? (banned.banned || []).length : '–', '黑名单'],
+    ];
+    box.innerHTML = cards.map(([ic, n, lab]) =>
+      `<div class="sb-item"><b>${ic} ${n}</b><span>${lab}</span></div>`).join('');
   }
 
   /* ---- 文章管理 ---- */
@@ -525,11 +554,17 @@
     document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');
-      ['posts', 'drive', 'gallery', 'comments', 'visitors', 'site', 'pwd'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      ['overview', 'posts', 'drive', 'gallery', 'comments', 'visitors', 'site'].forEach((t) => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      if (b.dataset.tab === 'overview') loadOverview().catch(() => {});
       if (b.dataset.tab === 'drive' && DRIVE_FILES === null) loadDrive().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
       if (b.dataset.tab === 'gallery' && !GALLERY_LOADED) loadGallery().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
       if (b.dataset.tab === 'comments' && !COMMENTS_LOADED) loadComments().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
       if (b.dataset.tab === 'visitors' && !VISITORS_LOADED) loadVisitors().catch((e) => showMsg('#saveMsg', '加载失败：' + e.message, false));
+    });
+    /* 概览快捷操作 → 跳对应页签 */
+    document.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => {
+      const t = document.querySelector('.tabs button[data-tab="' + b.dataset.goto + '"]');
+      if (t) t.click();
     });
     if (token()) enterDash();
   }
