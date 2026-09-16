@@ -84,7 +84,7 @@
     var box = document.getElementById('fxPanel');
     if (!box || box._built) return box;
     var rows = META.map(function (m) {
-      return '<label class="fx-row"><input type="checkbox" data-fx="' + m[0] + '" /><span class="fx-name">' + m[1] + '</span><span class="fx-desc hint">' + m[2] + '</span></label>';
+      return '<label class="fx-row"><input type="checkbox" data-fx="' + m[0] + '" /><span class="fx-name">' + m[1] + '</span><span class="fx-desc">' + m[2] + '</span></label>';
     }).join('');
     var list = box.querySelector('.fx-rows');
     if (list) list.innerHTML = rows;

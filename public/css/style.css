@@ -1963,19 +1963,30 @@ p:last-child { margin-bottom: 0; }
 
 /* ================= 25. 特效中心面板 ================= */
 /* 面板限高 + 开关列表内部滚动，避免小屏被裁掉看不到重置按钮 */
-.fx-panel { display: flex; flex-direction: column; margin-top: 8vh; max-height: 78vh; }
+.fx-panel { display: flex; flex-direction: column; width: min(580px, calc(100% - 32px)); margin-top: 6vh; max-height: 84vh; }
 .fx-panel .fx-rows { overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
-.fx-rows { padding: 4px 14px 8px; }
+.fx-rows { padding: 12px 18px 4px; }
 .fx-row {
-  display: grid; grid-template-columns: 22px auto 1fr; align-items: center; gap: 10px;
-  padding: 9px 10px; border: 2.5px solid var(--line-soft); border-radius: 10px; margin-bottom: 8px;
+  display: grid; grid-template-columns: 24px auto 1fr; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 2.5px solid var(--line-soft); border-radius: 12px; margin-bottom: 10px;
   cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .fx-row:hover { border-color: var(--line); background: var(--page-2); }
-.fx-row input { width: 17px; height: 17px; accent-color: #a3e635; cursor: pointer; }
+.fx-row input { width: 18px; height: 18px; accent-color: #a3e635; cursor: pointer; }
 .fx-name { font-weight: 800; font-size: 14px; white-space: nowrap; }
 .fx-desc { text-align: right; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 620px) { .fx-desc { display: none; } }
+
+/* 背景定制区：虚线分隔 + 独立留白，与开关列表呼吸开 */
+.fx-bg-host {
+  flex: 0 0 auto;
+  margin: 8px 0 0;
+  padding: 16px 18px 10px;
+  border-top: 2.5px dashed var(--line-soft);
+}
+.fx-bg-host .sec-head h3 { letter-spacing: .02em; }
+.fx-bg-host .hint, .fx-bg-host .fx-row:last-child { margin-bottom: 2px; }
+.fx-panel .cmdk-foot { padding: 12px 18px 14px; }
 
 /* CRT 开关：fx-no-crt 时关闭扫描线与网格辉光 */
 :root.fx-no-crt body::after { display: none; }
@@ -2184,11 +2195,16 @@ p:last-child { margin-bottom: 0; }
 .chat-gate { max-width: 560px; margin: 8vh auto 0; padding: 26px 28px; }
 
 /* ---- 27.5 背景定制面板 ---- */
-.bg-schemes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
-.bg-scheme { padding: 6px 12px; border: 2px solid var(--line); border-radius: 999px; background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.bg-schemes { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 16px; }
+.bg-scheme { padding: 8px 15px; border: 2px solid var(--line); border-radius: 999px; background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.bg-scheme:hover { border-color: var(--ink); }
 .bg-scheme.on { border-color: var(--ink); background: var(--lime-soft); font-weight: 800; }
-.bg-custom-row { display: flex; gap: 8px; margin-bottom: 10px; }
-.bg-url-input { flex: 1; min-width: 0; padding: 8px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); }
+.bg-custom-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.bg-url-input { flex: 1; min-width: 0; padding: 9px 13px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--page); color: var(--ink); font: inherit; font-size: var(--fs-xs); }
+.fx-bg-host .fx-row { grid-template-columns: auto 1fr auto; margin-bottom: 6px; padding: 10px 12px; }
+.fx-bg-host .fx-row .fx-name { white-space: nowrap; }
+.fx-bg-host .fx-row input[type="range"] { min-width: 120px; accent-color: #a3e635; }
+.fx-bg-host .fx-row em { min-width: 42px; text-align: right; }
 
 /* ---- 27.6 背景方案层（星野 / 数字雨 / 自定义壁纸） ---- */
 .bd-stars span { position: absolute; border-radius: 50%; background: var(--ink); opacity: .35; animation: star-tw var(--dur, 3s) ease-in-out infinite alternate; }
