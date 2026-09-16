@@ -421,7 +421,7 @@
   }
 
   /* ---- 资源网盘视图：目录树 + 文件列表 + 搜索 + 在线预览（访客可见可下载） ---- */
-  const DRIVE = { files: null, meta: null, dir: '', q: '', sort: { key: '', dir: 1 }, cur: '', token: localStorage.getItem('driveToken') || '' };
+  const DRIVE = { files: null, meta: null, dir: '', q: '', sort: { key: '', dir: 1 }, cur: '', token: localStorage.getItem('driveToken') || '', ownerOpen: false, adminTok: sessionStorage.getItem('ysyAdminTok') || '', ownerMsg: '' };
   const DRIVE_TEXT = ['.md', '.txt', '.json', '.csv', '.yaml', '.yml', '.c', '.h', '.cpp', '.hpp', '.py'];
   const DRIVE_IMG = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
@@ -514,6 +514,124 @@
     localStorage.removeItem('driveToken');
     renderDriveLocked('已重新上锁。');
   }
+  /* ============ 站主上传模式：管理员登录后在前台直接上传/建目录 ============ */
+  function adminHeaders(extra) {
+    const h = Object.assign({}, extra || {});
+    if (DRIVE.adminTok) h.Authorization = 'Bearer ' + DRIVE.adminTok;
+    return h;
+  }
+  function bufToB64(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const CH = 0x8000; // 分块避免 String.fromCharCode.apply 栈溢出
+    for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    return btoa(bin);
+  }
+  async function ownerLogin(pass) {
+    const msg = () => $('#ownerMsg');
+    if (msg()) msg().textContent = '校验中…';
+    try {
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pass }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { if (msg()) msg().textContent = j.error || '密码错误'; return; }
+      DRIVE.adminTok = j.token;
+      DRIVE.ownerMsg = '';
+      try { sessionStorage.setItem('ysyAdminTok', j.token); } catch (e) {}
+      renderDrive();
+    } catch (e) { if (msg()) msg().textContent = '网络异常，请重试'; }
+  }
+  function ownerLogout() {
+    DRIVE.adminTok = ''; DRIVE.ownerOpen = false;
+    try { sessionStorage.removeItem('ysyAdminTok'); } catch (e) {}
+    renderDrive();
+  }
+  function toggleOwnerPanel() { DRIVE.ownerOpen = !DRIVE.ownerOpen; renderDrive(); }
+  function renderOwnerPanel() {
+    const host = $('#ownerHost');
+    if (!host) return;
+    if (!DRIVE.adminTok) {
+      host.innerHTML = `<div class="owner-panel mono">
+        <div class="op-title">⬆ 站主模式</div>
+        <div class="lock-row">
+          <span class="lock-prompt">$</span>
+          <input id="ownerPass" type="password" placeholder="管理员密码" autocomplete="off" aria-label="管理员密码" />
+          <button id="ownerLogin" class="btn mini alt">登录 →</button>
+        </div>
+        <p class="hint lock-msg" id="ownerMsg">${escapeHtml(DRIVE.ownerMsg || '登录后可在前台直接上传文件到当前目录。')}</p>
+      </div>`;
+      const inp = $('#ownerPass');
+      const go = () => ownerLogin(inp.value);
+      $('#ownerLogin').addEventListener('click', go);
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      setTimeout(() => inp.focus(), 60);
+      return;
+    }
+    host.innerHTML = `<div class="owner-panel mono owner-on">
+      <div class="op-title">⬆ 站主模式 <span class="op-dir">上传目标：${DRIVE.dir ? escapeHtml(DRIVE.dir) + '/' : '根目录'}</span></div>
+      <div class="lock-row">
+        <input id="ownerFile" type="file" multiple aria-label="选择要上传的文件" />
+        <button id="ownerUpload" class="btn mini alt">⬆ 上传</button>
+        <input id="ownerMkDir" type="text" placeholder="新目录名" aria-label="新目录名" style="max-width:140px" />
+        <button id="ownerMkdir" class="btn mini">📁 建目录</button>
+        <button id="ownerLogout" class="btn mini ghost">退出站主</button>
+      </div>
+      <p class="hint lock-msg" id="ownerMsg">支持 ≤30MB 的文档/压缩包/图片/源码；同名文件会被覆盖。</p>
+    </div>`;
+    $('#ownerLogout').addEventListener('click', ownerLogout);
+    $('#ownerUpload').addEventListener('click', () => {
+      const files = $('#ownerFile').files;
+      if (!files || !files.length) return;
+      ownerUploadFiles(Array.from(files));
+    });
+    $('#ownerMkdir').addEventListener('click', async () => {
+      const name = $('#ownerMkDir').value.trim();
+      const msg = () => $('#ownerMsg');
+      if (!name) return;
+      const path = (DRIVE.dir ? DRIVE.dir + '/' : '') + name;
+      try {
+        const r = await fetch('/api/admin/drive/mkdir', { method: 'POST', headers: adminHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ path }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          if (j.error === '未登录或登录已失效') { DRIVE.adminTok = ''; DRIVE.ownerMsg = '登录已失效，请重新登录'; try { sessionStorage.removeItem('ysyAdminTok'); } catch (e) {} }
+          else if (msg()) msg().textContent = j.error || '创建失败';
+          renderDrive();
+          return;
+        }
+        DRIVE.ownerMsg = '';
+        viewDrive();
+      } catch (e) { if (msg()) msg().textContent = '网络异常，请重试'; }
+    });
+  }
+  async function ownerUploadFiles(files) {
+    const msg = () => $('#ownerMsg');
+    const prefix = DRIVE.dir ? DRIVE.dir + '/' : '';
+    for (const f of files) {
+      if (msg()) msg().textContent = `上传中：${f.name} …`;
+      try {
+        const buf = await f.arrayBuffer();
+        const body = JSON.stringify({ path: prefix + f.name, data: bufToB64(buf) });
+        const r = await fetch('/api/admin/drive/upload', { method: 'POST', headers: adminHeaders({ 'Content-Type': 'application/json' }), body });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          if (j.error === '未登录或登录已失效') {
+            DRIVE.adminTok = ''; DRIVE.ownerMsg = '登录已失效，请重新登录';
+            try { sessionStorage.removeItem('ysyAdminTok'); } catch (e) {}
+            renderDrive();
+            return;
+          }
+          DRIVE.ownerMsg = `${f.name} 失败：${j.error || '未知错误'}`;
+          renderDrive();
+          return;
+        }
+      } catch (e) {
+        DRIVE.ownerMsg = `${f.name} 网络异常`;
+        renderDrive();
+        return;
+      }
+    }
+    DRIVE.ownerMsg = `✓ ${files.length} 个文件已上传`;
+    viewDrive();
+  }
   function renderDrive() {
     const el = $('#drive');
     const m = DRIVE.meta || {};
@@ -561,7 +679,8 @@
     el.innerHTML = `<section class="sec wrap">
       <div class="sec-head"><span class="kicker">DRIVE</span><h2>资源网盘</h2>
         <span class="search-term mono" style="margin-left:auto;max-width:220px"><input id="driveSearch" placeholder="> 搜索文件…" value="${escapeAttr(DRIVE.q)}" aria-label="搜索文件" /></span></div>
-      <p class="hint" style="margin-bottom:16px">共 ${m.fileCount || 0} 个文件 · ${m.dirCount || 0} 个目录 · ${fmtSize(m.totalSize || 0)} — 点击文件名在线预览，⬇ 直接下载 · <a id="driveReLock" class="d-relock mono" title="清除本机解锁状态">🔒 重新上锁</a></p>
+      <p class="hint" style="margin-bottom:16px">共 ${m.fileCount || 0} 个文件 · ${m.dirCount || 0} 个目录 · ${fmtSize(m.totalSize || 0)} — 点击文件名在线预览，⬇ 直接下载 · <a id="driveReLock" class="d-relock mono" title="清除本机解锁状态">🔒 重新上锁</a> · <a id="driveOwnerBtn" class="d-relock mono" title="站主登录后可上传文件、新建目录">⬆ 站主上传</a></p>
+      <div id="ownerHost" style="margin-bottom:14px"></div>
       <div class="drive-layout">
         <aside class="drive-tree">
           <a class="dtree-item mono${DRIVE.dir === '' ? ' on' : ''}" data-dir="">▸ 根目录/</a>
@@ -593,6 +712,9 @@
     }
     const rl = $('#driveReLock');
     if (rl) rl.addEventListener('click', relockDrive);
+    const ob = $('#driveOwnerBtn');
+    if (ob) ob.addEventListener('click', toggleOwnerPanel);
+    if (DRIVE.ownerOpen) renderOwnerPanel();
     /* 灯箱：点击任意位置（遮罩或图片）即关闭 */
     const lb0 = $('#lightbox');
     if (lb0 && !lb0._closeBound) {

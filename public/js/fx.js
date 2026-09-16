@@ -276,10 +276,12 @@
   });
 
   /* ---- 7) 卡片 3D 倾斜 + 光泽跟随（CSS 变量 --tx/--ty/--gx/--gy） ---- */
+  /* 绑定与开关解耦：mousemove 内实时读 FXS.get('tilt')，
+   * 否则初始关闭、面板里再打开的倾斜永远绑不上（特效设置不生效的老毛病） */
   var TILT_SEL = '.post, .cat, .foot-card, .cta';
   var tiltBound = false;
   function tilt() {
-    if (tiltBound || isTouchDev || !FXS.get('tilt')) return;
+    if (tiltBound || isTouchDev) return;
     tiltBound = true;
     document.addEventListener('mousemove', function (e) {
       if (!FXS.get('tilt')) return;

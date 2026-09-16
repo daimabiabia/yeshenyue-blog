@@ -162,6 +162,182 @@
   },
   "posts": [
     {
+      "id": "e-sampling",
+      "title": "传感器采样率与上报节奏设计：更快的数据不一定是更好的数据",
+      "category": "embedded",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "sampling-and-reporting-design",
+      "tags": [
+        "嵌入式",
+        "采样",
+        "低功耗"
+      ],
+      "level": 2,
+      "excerpt": "采样、上报、存储三层节奏分离：变化上报 + 心跳兜底 + 事件触发高速窗口，用三本账定参数。",
+      "content": "# 传感器采样率与上报节奏设计：更快的数据不一定是更好的数据\n\n> 温度 10 秒采一次还是 1 秒采一次？上报 QoS 要不要 2？这篇用存储、电量、信噪比三本账，给出采样设计的决策框架。\n\n## 一、三本账：为什么\"高频\"通常是错的\n\n### 1. 物理账：信号本身没那么快\n\n被测量的时间常数决定采样上限的意义：\n\n| 被测量 | 变化时间常数 | 有意义的采样间隔 |\n|---|---|---|\n| 室温 | 分钟级 | 30~60s |\n| 人体存在 | 秒级 | 1~2s |\n| 电压/电流 | 毫秒级 | 10~100ms（含异常捕捉要更快） |\n| 振动 | μs 级 | 专用 ADC+DMA，别用轮询 |\n\n比信号时间常数更密的采样只会放大噪声——**采样率超过信号带宽 2 倍（奈奎斯特）之后，多出来的都是噪声**。\n\n### 2. 电量账\n\nWiFi 设备每秒醒一次采样上报，vs 60 秒一次：电流平均差 20 倍。电池设备一年 vs 半个月的差别就来自这个参数。NB-IoT 设备更极端：每次上报都是完整的网络附着过程，频率×能耗直接决定电池寿命。\n\n### 3. 存储账\n\n10 路传感器 × 1s × 8 字节 ≈ 700 万条/天。InfluxDB 存得住，但查询、备份、Grafana 渲染全都变慢。降采样到 30s → 数据量 /30，业务价值几乎无损。\n\n## 二、分层节奏：采集 ≠ 上报 ≠ 存储\n\n正确架构是三个独立的节奏：\n\n```\n采集（设备内）：按物理时间常数，如 1s 读一次\n滤波（设备内）：滑动平均，如 10 点平均\n上报（网络）：变化才报 or 周期 30s\n存储（云端）：原始 7 天 → 5min 聚合 1 年\n```\n\n### 变化上报（report by exception）模板\n\n```cpp\nfloat lastSent = -999;\nvoid maybeReport(float v) {\n  if (fabsf(v - lastSent) >= 0.5f          // 变化超过步长\n      || millis() - lastReport > 300000) { // 或 5min 强制心跳\n    mqttPublish(v);\n    lastSent = v; lastReport = millis();\n  }\n}\n```\n\n稳态时流量降 90%，突变时又能即时捕获——这是 IoT 上报的默认姿势。\n\n## 三、QoS 与可靠性的账\n\n- **遥测数据**：QoS 0~1。丢一条温度无所谓（下一条就来），QoS 2 的四倍开销纯浪费。\n- **指令/开关动作**：QoS 1 + 应用层确认（设备回 ack topic）。QoS 2 可用于\"绝对不能重复执行\"的场景（开锁），但更好的方案是幂等设计（指令带 seq，设备端去重）。\n- **离线缓存**：断网时数据进本地环形队列（预留容量 = 上报频率 × 预计离线时长），恢复后按时间戳补传，云端按时间戳覆盖——乱序免疫。\n\n## 四、时间戳：谁的钟算数\n\n1. **设备打点**：采样时刻打时间戳（uptime 或 NTP 同步后的真实时间），不是到达服务器的时间。\n2. **NTP 纪律**：设备上线先同步时间再上报；没同步成功的时间戳打 `uncertain` 标记。\n3. **云端接收时间 ≠ 采样时间**：补传的旧数据如果按接收时间入库，曲线会出现\"时间跳跃假象\"。InfluxDB 写入时显式带时间戳。\n\n## 五、异常捕捉与\"快照模式\"\n\n常规慢节奏之外，留一个**事件触发的高速窗口**：\n\n```cpp\n// 常规：1s 采样\n// 触发（振动/电流突增）：切 1kHz 采 3 秒，打包上传\nif (vibrationSpike()) {\n  highSpeedCapture(3000, 1000);   // 3s @ 1kHz → 3000 点\n  uploadBlob();                   // 压缩后一次上传\n}\n```\n\n这就是\"平时省电、事发抓细节\"的混合模式，电机监控/振动检测的标准架构。\n\n## 六、决策速查\n\n| 问题 | 决策 |\n|---|---|\n| 采样间隔设多少 | 被测量时间常数的 1/3~1/5 |\n| 什么时候上报 | 变化超步长 + 周期心跳兜底 |\n| QoS 用几 | 遥测 0/1，指令 1+ack，锁类幂等+去重 |\n| 断网数据 | 本地环形队列 + 时间戳补传 |\n| 需要细节怎么办 | 事件触发的高速窗口，不是全程高频 |\n\n## 七、检查清单\n\n- [ ] 采样率有物理依据，不是拍脑袋\n- [ ] 采集/上报/存储三层节奏分离\n- [ ] 变化上报 + 心跳兜底\n- [ ] 云端降采样策略（原始短留、聚合长存）\n- [ ] 时间戳设备侧打点 + NTP 纪律\n- [ ] 高速需求用事件触发窗口"
+    },
+    {
+      "id": "s-matter",
+      "title": "Matter 之路：一颗灯泡同时接入 HA 与 Apple Home",
+      "category": "smart",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "matter-multi-admin",
+      "tags": [
+        "智能家居",
+        "Matter",
+        "Thread"
+      ],
+      "level": 2,
+      "excerpt": "多重管理员是 Matter 的杀手锏：一颗灯 Siri 和 HA 都控得了。接入实录、边界路由器分裂等五大坑。",
+      "content": "# Matter 之路：一颗灯泡同时接入 HA 与 Apple Home\n\n> Matter 最打动人的能力是\"多重管理员\"：同一颗灯，Siri 控得了，HA 也控得了，互不冲突。实际接入走一遍，把坑踩完。\n\n## 一、准备清单\n\n- 一颗 Matter 设备（ Thread 或 WiFi，本文用 Thread 灯泡示范）\n- Home Assistant（2024.x+）+ **Thread 边界路由器**（Home Assistant Connect ZBT-1 或任意 OTBR）\n- iPhone（Apple Home 测试用）\n\n关键认知：**Thread 设备必须加入某个 Thread 网络**（由边界路由器创建），Matter 只是跑在 Thread 之上的应用层。没有边界路由器 = 灯泡永远配不上。\n\n## 二、接入 HA（第一生态）\n\n```\n1. 灯泡恢复出厂（长按 10s）\n2. 扫灯泡上的 Matter 二维码，记录 11 位手工配对码\n3. HA：设置 → 设备与服务 → 添加集成 → Matter → \"使用配对码添加\"\n4. 填入配对码 → 等待 30~120s（Thread 设备首次入网较慢）\n5. 出现实体 light.xxx\n```\n\n## 三、同时接入 Apple Home（多重管理员）\n\n```\n1. HA 里该 Matter 设备 → 齿轮 → \"与其它服务共享\"\n2. 生成一个共享配对码\n3. iPhone 家庭 App → 添加配件 → 输入该码\n4. 灯泡在两个生态同时在线 ✔\n```\n\n两个生态各自持有独立凭证（各自 Fabric），互不知晓也互不干扰——这就是 Matter 的多管理员架构。**共享的是设备本身，不是 HA 的控制权。**\n\n## 四、真实坑位（按出现频率排序）\n\n1. **Thread 边界路由器分裂**：家里有 HomePod mini + HA OTBR 两台路由器 → 两个 Thread 网络互不相通，设备在哪个网取决于先加入哪个。**只保留一个活跃边界路由器**，其余当普通 Thread 设备。\n2. **配对码被用旧**：二维码上的码只用于\"首次入网\"，设备已入网后要用\"共享码\"。直接用原始码 → 一直失败。\n3. **iPhone 家庭 App 里设备\"无响应\"**：手机走蜂窝网络 + 家庭中枢（HomePod/AppleTV）不在家/版本旧。Thread 设备控制依赖家庭中枢。\n4. **HA 重装后设备失联**：Matter 控制器的密钥丢了 → 设备还认旧控制器。恢复备份或设备重新配对。\n5. **WiFi Matter 设备配对慢**：2.4G 信道拥挤时 BLE 配网阶段超时，先把手机贴近设备、路由器 2.4G 负载低谷时配。\n\n## 五、固件更新与认证\n\n- **OTA**：Matter OTA 由\"供应商分发\"，家庭侧的 HA 可以给自建设备推 OTA；买来的设备跟厂商 App/云端节奏。\n- **VID/PID**：自研设备测试用 VID 0xFFF1；进生态白名单（尤其 Google/Alexa）需要正式认证，个人玩家 HA 侧无门槛。\n\n## 六、自建 ESP32 Matter 设备（顺带一提）\n\nESP32-H2（Thread）+ esp-matter SDK：\n\n```bash\n# ESP-IDF 环境\nidf.py set-target esp32h2\nidf.py menuconfig   # 启用 Matter 示例（light）\nidf.py build flash\n# 配对：扫描设备串口打印的二维码 → HA 添加\n```\n\n从\"能配对\"到\"量产稳定\"还差：安全启动、DAC 设备证明证书、断网重连策略。个人项目做到\"稳定配对 + 断电恢复 + OTA 可升级\"即可满意。\n\n## 七、要不要现在全面 Matter 化？\n\n务实建议：\n\n- 新买设备：优先带 Matter 标志（面向未来 + 双生态）。\n- 存量 Zigbee：Z2M 仍是最优解，别为了 Matter 重新配对一遍。\n- 关键场景（门锁/告警）：本地协议 + HA 自动化仍是延迟最低方案。\n- Thread 网络规划先于设备采购：边界路由器选型（HA ZBT-1 / HomePod / OTBR）决定体验上限。"
+    },
+    {
+      "id": "n-zerotrust",
+      "title": "IoT 设备零信任入门：设备身份与最小权限",
+      "category": "net",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "iot-zero-trust",
+      "tags": [
+        "网络安全",
+        "零信任",
+        "设备身份"
+      ],
+      "level": 3,
+      "excerpt": "内网可信假设已过时。设备身份三级实现、最小权限三层配额、首配对信任建立与五个攻破假设自检。",
+      "content": "# IoT 设备零信任入门：设备身份与最小权限\n\n> \"内网是可信的\"这个假设已经过时——设备先被攻破的时代，每个设备都要有身份、有边界、有最小权限。\n\n## 一、零信任在 IoT 里的三句话\n\n1. **每次连接都验证**：设备与 broker/云之间不是\"连上就算\"，而是双向身份校验。\n2. **只给刚好的权限**：温湿度传感器没有任何理由能发\"开门\"指令。\n3. **假定已被攻破**：任何一台设备沦陷，横向影响面要被架构限制住。\n\n## 二、设备身份的三种实现（按强度递增）\n\n### 1. 用户名密码（现状基线）\n\n```\n每设备独立凭证（拒绝全网共用）\n密码来自设备首次激活时生成，不入固件镜像\n泄露影响面 = 单台设备\n```\n\n### 2. X.509 证书 + TLS 双向认证（推荐）\n\n```\n每设备：唯一私钥（烧录在安全区/NVS 加密）+ 设备证书\nBroker/云：持有 CA 根证书，验设备证书链\n设备：验证服务器证书（防假服务器）\n结果：冒用设备 impossible，私钥不出设备\n```\n\nESP32 落地：`esp_tls` 双向证书 + 出厂时写入唯一证书；吊销用 CRL/OCSP 或短有效期证书+在线续期。\n\n### 3. 安全芯片（高价值设备）\n\nATECC608 / SE050 类：私钥生成于芯片内部、物理不可读，签名在芯片内完成。板子被拆也拿不走身份。成本 +3~5 元，按设备价值决定。\n\n## 三、最小权限的落地：三层配额\n\n```\n网络层：设备只能访问 broker 的 8883 端口（防火墙/ACL）\n应用层：topic 只能发 dev/<自身ID>/# （broker ACL）\n功能层：指令白名单——传感器固件里根本没有\"开门\"代码可调用\n```\n\n**功能层最容易被忽略**：即使 broker 被攻破，攻击者向传感器发 `open_lock` 也无效——因为它没实现这个 handler。权限不只是\"配置\"，更是\"能力边界\"。\n\n## 四、信任的建立：首次配对（Onboarding）\n\n设备出厂是\"白板\"，怎么建立第一信任？\n\n```\n方案 A（私有云）：扫码绑定\n  设备贴二维码（内含激活码）→ 用户 App 扫码 → 云端把激活码与账号绑定\n  设备首连用激活码换证书/凭证 → 后续用证书\n\n方案 B（自建家庭）：本地配对\n  设备 AP 模式 → 手机连入 → 交换 WiFi 凭证 + 设备加入本地 ACL\n\n共同纪律：激活凭证一次性、有时效；配对窗口 5 分钟自动关闭。\n```\n\n## 五、运行期的持续验证\n\n1. **心跳 + 行为基线**：设备每分钟上报频率稳定在 ±20%，突变（风暴上报/静默）触发审查。\n2. **固件完整性**：安全启动（secure boot）+ 签名固件，篡改的固件无法启动——ESP32 eFuse 开启即可。\n3. **会话短命**：TLS 会话 24h 强制重协商；token 有效期短 + 续签。\n4. **异常指令熔断**：设备收到不认识的 topic/指令次数超限 → 主动断连 + 上报 + 进入\"只上报不执行\"模式。\n\n## 六、攻破假设演练（架构自检）\n\n问自己五个问题：\n\n```\n1. 拿到一台设备固件，能提取出\"万能密钥\"进全网吗？\n   （能 = 用了全局共享密钥，重做）\n2. 一台设备被完全控制，能操控别的设备吗？\n   （能 = ACL 没做水平隔离）\n3. Broker 数据库泄露，能伪造任意设备上线吗？\n   （能 = 私钥在云端集中保管）\n4. 用户密码泄露，能直接下发危险指令吗？\n   （能 = 高危指令缺二次确认/双向认证）\n5. 设备离线时的指令队列，会被重放吗？\n   （会 = 指令缺时间戳/nonce 防重放）\n```\n\n## 七、起步清单（小项目也能做）\n\n- [ ] 每设备独立凭证，激活时生成\n- [ ] TLS 双向认证（自建 CA 起步即可）\n- [ ] broker ACL 按 topic 前缀隔离\n- [ ] 高危指令带 nonce+时间戳防重放\n- [ ] 固件签名 + secure boot\n- [ ] 设备行为有基线监控"
+    },
+    {
+      "id": "s-z2m",
+      "title": "Zigbee2MQTT 从零到稳定：配对、命名与运维",
+      "category": "smart",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "zigbee2mqtt-stable-guide",
+      "tags": [
+        "智能家居",
+        "Zigbee",
+        "Z2M"
+      ],
+      "level": 2,
+      "excerpt": "一个 USB 棒接管全屋 Zigbee：协调器选型、信道避让、命名规范、mesh 健康检查与故障手册。",
+      "content": "# Zigbee2MQTT 从零到稳定：配对、命名与运维\n\n> 一个 USB 棒 + Z2M，让几十颗 Zigbee 设备全部本地化、断网可用。这篇是踩完坑之后的稳定运行手册。\n\n## 一、为什么是 Z2M（而不是 Zigbee Hub）\n\n| | 品牌网关（米家/Aqara） | Z2M |\n|---|---|---|\n| 云依赖 | 部分依赖 | **零依赖** |\n| 设备生态 | 自家为主 | 3000+ 型号全收录 |\n| 数据 | 闭源 App | MQTT 全透明，随便对接 |\n| 固件升级 | 厂商节奏 | Z2M 跟进社区（ota 功能） |\n| 成本 | 网关 200+ | USB 棒 50 |\n\n## 二、硬件与安装\n\n**协调器选型**：\n- **Sonoff ZBDongle-E（EZSP/EFR32）**：新装机首选，稳定且不挑天线。\n- Sonoff ZBDongle-P（TI CC2652）：老牌稳定，串口驱动 Silicon Labs vs TI 之别。\n- SLZB-06/POE：网线直连可放房间中心，信号覆盖最优（Zigbee 是网状网，协调器位置=网络质量）。\n\n```yaml\n# docker-compose\nservices:\n  zigbee2mqtt:\n    image: koenkk/zigbee2mqtt\n    volumes:\n      - ./data:/app/data\n      - /dev/serial/by-id/usb-ITEAD...:/dev/ttyACM0\n    ports: [\"8080:8080\"]\n```\n\n```yaml\n# configuration.yaml\nserial:\n  port: /dev/ttyACM0        # 用 by-id 路径！USB 重插后 ttyACM 编号会变\nadvanced:\n  channel: 25               # 2.4G 三大无干扰信道 11/15/20/25，避开 WiFi\n  network_key: GENERATE     # 生成后保存备份，换机要原 key 才能接管网络\n```\n\n**信道纪律**：WiFi 1/6/11 信道全占满时，Zigbee 选 15/20/25（落在 WiFi 信道间隙）。选错信道 = 全屋设备随机掉线。\n\n## 三、配对与命名规范\n\n1. **配对**：UI 里 \"Permit join\" 开启 → 设备长按配对键。Aqara 类设备有\"对话模式\"限制，每 30s 重按一次。\n2. **命名规范（第一天就定好，后期改名成本高）**：\n\n```\n房间-类型-位置：\n  living-room/light/sofa-left\n  entry/sensor/door\n  bedroom/sensor/temp\n```\n\n3. **friendly_name 一旦被 HA 引用，改名 = 所有自动化断链**。先用编号跑通，稳定后一次性定名，别边用边改。\n\n## 四、网络健康运维\n\nZigbee 是网状网，**路由节点（插电设备）越多网络越稳**。健康检查三件事：\n\n1. **Mesh 图**：Z2M UI 的 Map 看拓扑，电池设备应挂在就近的路由节点上，而不是直连协调器（穿墙直连=信号挣扎）。\n2. **LQI 信号质量**：`node Victoria → linkquality` 低于 50 的考虑加中继（随便一个插电 Zigbee 插座就是中继）。\n3. **OTA**：`Settings → OTA` 更新设备固件；Aqara/绿米部分设备需\"触发 5 次快速开关\"才接受升级。\n\n## 五、与 HA 的接法\n\n```\nZ2M → MQTT → HA 的 MQTT 集成（自动 discovery）\nHA 里自动出现全部实体：开关/传感器/灯\n自动化写 HA，Z2M 只管设备层\n```\n\n注意 Z2M 的 `homeassistant.enabled: true` 默认开启；**两套系统（米家网关 + Z2M）不要同时管理同一颗设备**——设备只能属于一个 Zigbee 网络。\n\n## 六、常见故障手册\n\n| 现象 | 根因 | 处理 |\n|---|---|---|\n| 全屋设备集中掉线 | 协调器 USB 掉线/信道被 WiFi 淹 | 看 Z2M 日志首行错误；换 by-id 与信道 |\n| 单个设备频繁离线 | 距离远、挂错路由 | 加中继或挪位 |\n| 电池设备几周没数据 | 睡眠设备错过路由请求 | 用带 router 功能的邻居；或唤醒（按一下按钮） |\n| 配对失败 | 设备还在旧网络里 | 复位设备（5 次开关灯/长按 5s），先从旧网移除 |\n| 换 USB 棒后全网失联 | network_key/pan_id 没迁移 | 备份的 `coordinator_backup.json` 恢复，或全部重新配对 |\n| Z2M 升级后设备行为怪 | 转换器（converter）变更 | 看 changelog，回滚或等 hotfix |\n\n## 七、稳定运行检查清单\n\n- [ ] 协调器位置在房子中心，插电设备当路由\n- [ ] 信道避开 WiFi（15/20/25）\n- [ ] network_key 与 coordinator 备份已导出保存\n- [ ] 命名规范统一，HA 自动化引用稳定\n- [ ] 电池设备低电量告警（Z2M battery 实体 → HA 自动化）\n- [ ] Z2M 与数据目录随 NAS/HA 备份（backup 功能一键导出）"
+    },
+    {
+      "id": "av-frigate",
+      "title": "Frigate 视频分析实战：本地 NVR + AI 事件检测",
+      "category": "av",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "frigate-local-nvr",
+      "tags": [
+        "视频影音",
+        "Frigate",
+        "NVR"
+      ],
+      "level": 2,
+      "excerpt": "有人逗留才告警、猫路过不理。Frigate 本地 AI NVR 的双码流架构、误报三板斧与 HA 联动。",
+      "content": "# Frigate 视频分析实战：本地 NVR + AI 事件的正确搭法\n\n> 摄像头录像谁都会，但\"有人逗留才告警、猫路过不理\"才是 NVR 的灵魂。Frigate 用本地算力把这件事做到开箱即用。\n\n## 一、Frigate 是什么\n\n开源 NVR + 实时目标检测：接 RTSP 摄像头 → 运动检测触发 → AI 模型分类（人/车/猫/狗）→ 事件录像 + 推送。**全程本地**，不传云，不付订阅费。\n\n硬件要求务实版：\n- **Coral TPU（USB/PCIe）**：经典搭配，8~10 路 1080p 轻松，功耗 2W。\n- **OpenVINO（Intel 核显）**：有 N100 小主机就能跑，省一个 TPU。\n- **纯 CPU**：1~2 路 1080p 勉强，JVN 核 N100 级别可 4 路。\n\n## 二、最小可用配置\n\n```yaml\n# docker-compose 核心\nservices:\n  frigate:\n    image: ghcr.io/blakeblackshearer/frigate:stable   # 官方 ghcr.io/blakeblackshearer/frigate\n    shm_size: \"256mb\"\n    devices:\n      - /dev/apex_0        # Coral USB 用 /dev/bus/usb\n    volumes:\n      - ./config:/config\n      - /mnt/nvr:/media/frigate\n    ports: [\"5000:5000\", \"8554:8554\"]\n```\n\n```yaml\n# config/config.yml\nmqtt:\n  host: 192.168.20.5\ncameras:\n  front_door:\n    ffmpeg:\n      output_args:\n        detect: -vf scale=1280:720\n    detect:\n      enabled: true\n      width: 1280\n      height: 720\n      fps: 5                # 检测流 5fps 足够，主录像流单独走全帧率\n    objects:\n      track: [person, car]\n      filters:\n        person:\n          min_area: 2000    # 过滤远处行人误报\n    zones:\n      porch:\n        coordinates: 0.3,0.1,0.9,0.1,0.9,0.9,0.3,0.9   # 归一化多边形\n        objects: [person]\n```\n\n**关键架构认知**：每路摄像头两条流——**主码流（全帧率录像）+ 子码流（低帧率检测）**。检测跑在子码流上省 80% 算力，这也是所有 NVR 的标准玩法。\n\n## 三、误报抑制三板斧\n\n1. **zone（区域多边形）**：只在\"门口台阶\"内的人算事件，马路上路过的全忽略。这是第一生产力。\n2. **min_area / 阈值**：远处 20px 的\"人\"（树影/广告牌）直接滤掉。\n3. **required_zones + 时间条件**：夜间才对后院布防（配合 HA 的时间条件）。\n\n调优流程：先全开看一天误报 → 给每个误报源（树影/灯光/猫）加 zone 或 filter → 第二天再验。**不要指望模型本身解决误报**，工程手段优先。\n\n## 四、与 Home Assistant 联动\n\n```yaml\n# HA 侧（Frigate 集成自动出实体）\nautomation:\n  - alias: \"后院夜间有人\"\n    trigger:\n      platform: state\n      entity_id: binary_sensor.backyard_person_occupancy\n      to: \"on\"\n    condition:\n      condition: time\n      after: \"23:00\"\n    action:\n      - service: notify.mobile_app\n        data:\n          title: \"⚠️ 后院检测到人\"\n          message: \"置信度 {{ state_attr('binary_sensor.backyard_person_occupancy','score') }}\"\n          data:\n            image: /api/frigate/notifications/backyard/person/latest.jpg\n```\n\nHA 通知带**事件截图**，不用开 App 就能初判——误报 3 秒划掉，真有事立刻回家。\n\n## 五、存储规划\n\n```\n检测事件录像：H.264 子码流 720p ≈ 0.5GB/h/路\n连续录像：主码流 1080p ≈ 2GB/h/路\n\n实用策略（4 路）：\n  连续录像保留 3 天 ≈ 576GB\n  事件录像保留 30 天 ≈ 300GB（事件通常远短于全天）\n  → 2TB 盘可循环。exFAT 别用（断电损坏风险），ext4/ZFS。\n```\n\nFrigate 自带循环覆盖（保留 N 天），比手写 cron 清理可靠。\n\n## 六、进阶玩法\n\n- **语义搜索**：Frigate 0.14+ 内置 embedding 搜索（\"红衣服的人\"），检索历史事件范式变了。\n- **人脸识别**：配合 double-take + CompreFace，认识的人只记不发通知。\n- **车牌识别（LPR）**：车道 zone + lpr 插件，到家自动开闸进 HA 场景。\n- **双机架构**：N100 跑 Frigate 主力 + 树莓派跑门口摄像头专用实例，网络分区互为备份。\n\n## 七、踩坑实录\n\n1. **shm 不够**：容器默认 64MB，多摄像头直接崩 → `shm_size: 256mb` 起。\n2. **子码流 H.265**：部分浏览器/检测管线对 H.265 支持差，检测流强制 H.264 更稳。\n3. **摄像头时间不同步**：NTP 没配导致事件时间戳错乱，与 HA 对不上账——摄像头侧全开 NTP 指向内网。\n4. **Coral USB 掉线**：USB 供电/线材问题，用带供电的 hub + 短线。\n5. **GPU/TPU 全配了还是卡**：瓶颈在录像写盘（机械盘 4 路连续写吃满）——录像盘上 SSD/缓存盘，或降主码流码率。"
+    },
+    {
+      "id": "hw-thermal",
+      "title": "整机热设计速查：从芯片到外壳的温度账",
+      "category": "hardware",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "thermal-design-basics",
+      "tags": [
+        "硬件随笔",
+        "热设计",
+        "散热"
+      ],
+      "level": 2,
+      "excerpt": "Tj = Ta + P×θ 一条公式走完从结点到空气的温度链路，铺铜过孔阵、电池隔热、密封壳减半，热账算清楚。",
+      "content": "# 整机热设计速查：从芯片到外壳的温度账\n\n> 设备夏天死机、外壳烫手、电池鼓包——都是热设计的账没算。这篇给出一条从芯片到外壳的完整温度链路怎么算、怎么测。\n\n## 一、热设计的第一课：找到最热的环节\n\n温度链路：**结点（芯片内部）→ 壳 → 散热器/PCB → 空气**。热阻串联相加：\n\n```\nTj（结温）= Ta（环温）+ P × (θjc + θcs + θsa)\n\nESP32 双核满跑 WiFi TX ≈ 1.2W\nθjc ≈ 20℃/W（QFN 裸片到壳）\n不加散热自然对流 θsa ≈ 60℃/W\n→ Ta=40℃ 时结温 ≈ 40 + 1.2×80 = 136℃ ❌ 超过 125℃ 上限\n```\n\n**结论：高功耗 ESP32 产线设备必须散热路径设计**，不能裸奔。\n\n## 二、低成本散热手段排序（性价比从高到低）\n\n1. **降低功耗**（治本）：降 CPU 频率（240→80MHz 省 60% 功耗）、WiFi 不用时可 `esp_wifi_stop`、屏幕睡眠。散热预算 1W → 0.4W，问题消失。\n2. **铺铜 + 过孔阵列**：芯片散热焊盘（EPAD）下方打 5×5 过孔阵连到底层铺铜，θsa 立减 30%。**免费的**。\n3. **外壳金属化**：铝壳当散热器，芯片贴壳（导热垫 1~3W/mK）。塑料壳 +3 块钱一片的导热铝片贴内侧也有效。\n4. **加散热片**：小型鳍片 +导热双面胶，θsa 60→25℃/W。注意**自然对流鳍片要竖**，横放效率减半。\n5. **风扇**：最后手段，带来进灰与寿命问题；IP65 场景基本出局。\n\n## 三、电池是热设计的特殊雷区\n\n锂电池舒适区 0~35℃：\n\n- **>45℃ 充电** → 析锂、容量衰减加速、鼓包风险。充电电路选带温度探头的（JEITA 标准：温度分段调充电电流/截止电压）。\n- **<-10℃ 充电** → 直接析锂内短路风险，必须锁死充电。\n- **布局**：电池远离 DC-DC 电感与功率电阻 ≥1cm，远离天线（温漂影响频偏）。\n- 户外设备加**隔热舱**（电池与热源之间泡棉/气凝胶），或低温时用自加热膜。\n\n## 四、实测方法：别信手感\n\n1. **红外测温枪**：快但测不了反光/小目标，芯片表面对红外不透明——测的是封装壳温不是结温。\n2. **K 型热电偶 + 万用表**：贴芯片壳/电池表面，热平衡（每 5min 变化 <0.5℃）后读数。\n3. **NTC 布点**：量产板在关键位（DC-DC 电感旁、电池表面、主控背面）预留 NTC 焊位，固件记录温度曲线——远程就能看热表现。\n4. **判稳标准**：满载 1h 后每 10min 温升 <1℃，且全部测量点低于规格（结温按壳温 + θjc×P 估算留 15℃ 余量）。\n\n## 五、外壳与结构的账\n\n- 密封壳（IP67）没有自然对流，全靠传导：内部空气温升比开孔壳高 15~25℃，**功率预算砍半**。\n- 塑料壳导热差（0.2W/mK）≈保温杯：内部发热件全部要靠 PCB→螺丝柱→壳的微弱传导，别指望\"壳会呼吸\"。\n- 太阳直晒：深色外壳表面可达 70℃+，户外设备选浅色壳或加遮阳罩，壳温直接减 15℃。\n\n## 六、速查表\n\n| 场景 | 预算要点 |\n|---|---|\n| ESP32 室内插座 | 80MHz+铺铜孔阵足够 |\n| 4G Cat1 网关（峰值 2W） | 铝壳或导热垫贴壳 + 电池隔热 |\n| 户外太阳能节点 | 功率预算 <0.5W，深睡为主，浅色壳 |\n| 电机驱动板 | 驱动芯片铺铜 ≥4cm² + 热电偶实测 |\n| 密封 IP67 | 功率预算减半，金属壳优先 |\n\n## 七、检查清单\n\n- [ ] 算过 Tj = Ta + P×θ，留 15℃ 余量\n- [ ] EPAD 过孔阵列 + 大面积铺铜（免费的两步）\n- [ ] 电池远离热源、充电带温度保护\n- [ ] 热平衡实测而非手感，留温度曲线\n- [ ] 密封壳功率预算减半\n- [ ] 固件带温度遥测（NTC 或片内温度计）"
+    },
+    {
+      "id": "n-ipv6",
+      "title": "IPv6 落地物联网：地址规划、直连与安全边界",
+      "category": "net",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "ipv6-for-iot",
+      "tags": [
+        "IPv6",
+        "网络工程",
+        "安全"
+      ],
+      "level": 3,
+      "excerpt": "每设备一个公网地址 ≠ 暴露。子网规划、固定后缀、防火墙下放到设备组，IPv6 的正确打开方式。",
+      "content": "# IPv6 落地物联网：地址规划、直连与安全边界\n\n> 运营商已经大规模派发 IPv6，IoT 设备天然适配\"每设备一个公网地址\"的理念——但直连世界的同时，防火墙边界要重新想。\n\n## 一、IoT 为什么需要 IPv6\n\n1. **地址焦虑消失**：IPv4 下做端口映射、内网穿透、中继都源于地址不够。IPv6 下每台设备可拥有全球唯一地址，点对点直达。\n2. **NAT 穿透消失**：UDP/CoAP 设备直连，延迟与复杂度双降。\n3. **6LoWPAN/Thread**：低功耗协议栈原生基于 IPv6（这是 Thread 的地基）。\n4. **端到端加密**：无需 NAT 中间人，DTLS 直达。\n\n## 二、地址规划：不再是 192.168 的小学算术\n\nIPv6 地址 128 位，子网 /64 是最小分配单位——**一个家庭拿到的 /56 或 /48 足够分 256~65536 个 /64 子网**。\n\n```\n2001:db8:aaaa:1::/64   ← 信任区（电脑、手机）\n2001:db8:aaaa:2::/64   ← IoT 区\n2001:db8:aaaa:3::/64   ← 访客区\n```\n\n设备地址两种模式：\n\n| 模式 | 形式 | 适用 |\n|---|---|---|\n| SLAAC（无状态） | 前缀 + EUI-64/MAC 衍生 | 免配置，默认 |\n| 固定后缀 | `2001:db8:aaaa:2::101` | 防火墙规则好写，推荐 IoT 用 |\n\nIoT 设备建议**固定后缀 + DHCPv6 或手动配置**——防火墙按后缀放行，可读可审计。\n\n## 三、安全边界：公网可达 ≠ 公网可访问\n\n最大的认知误区：设备有公网 IPv6 就\"暴露\"了。真正的暴露面由防火墙决定：\n\n```\n# OpenWrt ip6tables 示例：IoT 区默认拒绝入站\nip6tables -A FORWARD -i wan -d 2001:db8:aaaa:2::/64 -j DROP\nip6tables -A FORWARD -i trusted -d 2001:db8:aaaa:2::/64 -j ACCEPT   # 家内可管\n\n# 例外：某设备只开放指定端口给特定来源\nip6tables -A FORWARD -i wan -d 2001:db8:aaaa:2::101 -p tcp --dport 8883 -s 2001:db8:cloud::/48 -j ACCEPT\n```\n\n**纪律**：\n1. IoT 区入站默认全拒，远比 IPv4 的\"只挡 WAN 口\"要细——IPv6 下每个设备都是\"边缘\"，规则要下放到设备组。\n2. 设备固件必须自带最小服务面：不开 telnet/23、不开调试 80 调试页面到公网。\n3. 邻居发现协议（NDP）安全：路由器上开 RA Guard，防伪造网关。\n\n## 四、设备端配置（ESP32 示例）\n\n```cpp\n// ESP-IDF 启用 IPv6（lwIP 默认支持，需开启 SLAAC）\nesp_netif_create_ip6_linklocal(esp_netif);\n// 等待全球地址就绪\nesp_netif_ip6_info_t ip6;\nesp_netif_get_ip6_global(esp_netif, &ip6);\n// MQTT 直连 IPv6 broker\nesp_mqtt_client_config_t cfg = {\n  .broker.address.uri = \"mqtts://2001:db8:cloud::10:8883\",\n};\n```\n\n坑速查：\n1. **DNS AAAA 优先策略**：双栈设备默认 Happy Eyeballs，IPv6 不通自动回 IPv4——但 UDP 自定义协议没有这个机制，需自己做回退。\n2. **地址变化**：前缀由运营商派发会变（重拨就换），设备侧必须有\"前缀变了重新注册\"逻辑（按域名+DDNS 而非硬编码地址）。\n3. **防火墙只挡入站不挡出站**的默认策略在 IoT 上是错的：出站也要限制（设备被反噬后对外扫描）。\n\n## 五、家庭落地清单\n\n- [ ] 路由器开 IPv6（光猫桥接+路由拨号，别用光猫路由模式的老固件）\n- [ ] IoT 区独立 /64 + 入站默认拒\n- [ ] 需要公网可达的设备用固定后缀 + 精确放行\n- [ ] 远程访问仍走 WireGuard（IPv6 让 VPN 更简单：直连无 NAT）\n- [ ] 路由器防火墙日志保留，季度审一次"
+    },
+    {
+      "id": "c-alert",
+      "title": "Grafana 告警体系：从曲线好看 到 值班手机响",
+      "category": "cloudedge",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "grafana-alerting-system",
+      "tags": [
+        "Grafana",
+        "监控",
+        "告警"
+      ],
+      "level": 2,
+      "excerpt": "看板只能看见问题，告警才能解决问题。防风暴、分级路由、可执行内容与故障演习，最后一公里走通。",
+      "content": "# Grafana 告警体系：从曲线好看 到 值班手机响\n\n> 看板只能\"看见问题\"，告警才能\"解决问题\"。从曲线到值班手机的最后一公里，决定监控体系是不是摆设。\n\n## 一、告警设计的三个反模式\n\n1. **告警风暴**：一条规则刷 200 条通知 → 值班人开始无视告警（\"狼来了\"效应），真正的事故被淹没。\n2. **无人认领**：告警发到群里没人 @ 责任人，48 小时无人处理。\n3. **只测 symptoms**：CPU 高告警了，但用户已经故障 2 小时——告警应该贴着\"用户可感知\"设计。\n\n健康告警体系 = **少而准 + 有人管 + 有处理手册**。\n\n## 二、Grafana Alerting 配置要点\n\n### 贴着用户可感知设计规则\n\n```\n❌ CPU > 80% 告警          ← 忙≠故障\n✔ 数据断流告警：设备心跳 absent > 10min\n✔ 数据质量告警：传感器 NaN 率 > 5% (5m)\n✔ 业务阈值告警：冷库温度 > 8℃ 持续 10min\n```\n\n### 防风暴三件套\n\n```yaml\n# 1. pending period：持续超过阈值才触发（滤掉瞬时毛刺）\nfor: 5m\n\n# 2. 通知合并：同一规则 30 分钟内只发一次，恢复才发第二条\nrepeat_interval: 4h\ngroup_interval: 5m\n\n# 3. 标签路由：按 severity 分流\nlabels:\n  severity: critical | warn\n```\n\n### Alertmanager 路由示例\n\n```yaml\nroute:\n  receiver: default-warn\n  group_by: [alertname, device]\n  group_wait: 30s        # 聚合 30s 内同组告警为一条\n  routes:\n    - matchers: [severity=\"critical\"]\n      receiver: oncall-sms       # 严重：电话/短信\n    - matchers: [severity=\"warn\"]\n      receiver: team-feishu      # 一般：群消息\n```\n\n## 三、IoT 场景必配的六条规则\n\n1. **设备离线**：`absent(heartbeat[10m])` —— 最重要的一条。\n2. **数据停止**：有连接但 `_measurement` 无新点 >30min（半死机）。\n3. **数据质量**：NaN/超物理量程占比超限（传感器坏了）。\n4. **通信质量**：MQTT 授权失败计数增长（有人试密码，安全告警）。\n5. **电量**：电池设备 <20%（提前换电池，而不是等它死）。\n6. **积压**：队列/缓冲区水位高（下游写入故障的早期信号）。\n\n## 四、告警内容可执行\n\n一条好告警自带上下文，值班人不需要打开 5 个页面拼线索：\n\n```\n标题：[critical] 冷库-03 温度超限\n正文：\n  当前 8.6℃，阈值 8℃，已持续 12min\n  设备 esp32-freezer-03，最后心跳 2min 前（在线）\n  最近 1h 趋势：持续上升无回落\n  可能原因检查单：\n  1) 门未关严（门磁最近 30min 有 3 次开启）\n  2) 压缩机供电（该回路电流最近有波动）\n  运维手册：https://wiki/.../freezer-incident\n```\n\n把**检查单写进告警**，是低成本高回报的运维投资。\n\n## 五、值班与闭环\n\n1. **认领机制**：告警必须被 ack（企业微信/飞书机器人支持按钮回复）。未 ack 15 分钟升级到下一级。\n2. **处理结果回写**：故障单链接附在告警里，关闭告警必须关闭单子——防止\"静默恢复\"没人知道发生了什么。\n3. **复盘**：每次 critical 事后 10 分钟\"错题本\"：为什么没提前发现？规则要不要加？\n\n## 六、测试你的告警（重要且常被忽略）\n\n```\n每月一次\"故障演习\"：\n1. 手动拔掉一台设备 → 计时看告警多久到、内容是否准确\n2. 人为制造 NaN → 看数据质量告警是否触发\n3. 关掉通知渠道 → 确认备用通道能兜底\n```\n\n没演习过的告警体系 = 没练过的消防栓。\n\n## 七、检查清单\n\n- [ ] 所有规则带 for/持续窗口，无毛刺告警\n- [ ] 严重度分级 + 分路由（电话/群）\n- [ ] 告警内容含上下文与检查单\n- [ ] 认领与升级机制存在\n- [ ] 每月故障演习\n- [ ] 告警规则本身被版本管理（配置进 git）"
+    },
+    {
+      "id": "pi-burnin",
+      "title": "量产前的烧机测试：老化工装与自动化判定",
+      "category": "pit",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "burn-in-testing",
+      "tags": [
+        "踩坑记录",
+        "量产",
+        "老化测试"
+      ],
+      "level": 2,
+      "excerpt": "一台正常 ≠ 一万台正常。48 小时老化测试怎么设计、判定指标怎么定、工装怎么做，把「三天死机」拦在出货前。",
+      "content": "# 量产前的烧机测试：老化工装与自动化判定\n\n> 一台设备正常 ≠ 一万台正常。量产前的老化测试（burn-in）是拦截\"三天死机\"设备的最后一道闸。\n\n## 一、为什么要烧机\n\n失效曲线（浴盆曲线）告诉我们：早期失效集中在头 48~200 小时——虚焊、器件批次缺陷、固件内存泄漏都在这个窗口暴露。老化 48h 能拦下 70% 以上的早期故障。\n\n## 二、测试项分层\n\n### 1. 功能全扫（开机即测，2 分钟）\n\n```\n□ 所有传感器有读数且在合理范围\n□ WiFi/MQTT 注册成功\n□ 按键/继电器/灯逐个动作（工装自动触发或人工点检）\n□ 固件版本正确\n□ NVS 配置可读写\n```\n\n### 2. 老化运行（48~72 小时）\n\n```\n□ 循环上电：每小时断电重启一次（考验冷启动可靠性）\n□ 压力组合：WiFi 连接/断开循环 + 全速采样 + MQTT 高频上报\n□ 温度循环（有条件）：25℃ → 45℃ → 25℃\n□ 断网测试：定时拔网线/关路由，验证重连与数据补传\n```\n\n### 3. 判定指标（自动化，别人肉盯）\n\n| 指标 | 阈值 |\n|---|---|\n| free heap 最低点 | 不低于启动值 60%，且不持续下降 |\n| 重启次数 | 0（主动升级除外，重启原因需上报） |\n| MQTT 断连次数 | ≤3 次/24h，且均自动重连 |\n| 传感器 NaN 率 | <0.5% |\n| 外壳温度 | 稳态后 ΔT 不再上涨（热平衡） |\n\n## 三、工装怎么做（千元内）\n\n```\n1. 待测板插在测试架（治具顶针或排座）\n2. 供电走 USB 功率计（可读电流曲线，电流异常=硬件暗病）\n3. 每板独立 WiFi MAC 便于区分；或贴二维码绑定 serial\n4. 服务端一台小主机跑：\n   - 老化监视脚本：订阅所有测试机的 heartbeat + heap + reboot 原因\n   - 判定报表：到期自动出 PASS/FAIL 清单\n```\n\n核心是**让设备自己上报自检数据**，固件里内置老化模式：\n\n```cpp\n#ifdef BURN_IN\nvoid burnInLoop() {\n  static uint32_t cycle = 0;\n  // 每 10s：全量读传感器 + heap + 电流采样计数\n  mqttPublish(\"burnin/%s/stat\", devId, heap, cycle++);\n  // 每 60s：WiFi 断连重连一次\n  if (cycle % 6 == 0) esp_wifi_disconnect();\n}\n#endif\n```\n\n## 四、常见拦截案例（真实教训）\n\n1. **heap 8 小时漏 4KB**：某第三方库的 DNS 缓存不释放。烧机第 3 天会死——没烧机就出货，等来的就是批量退货。\n2. **冷启动 1% 失败**：上电瞬间电源爬升慢，bootloader 超时。循环上电测试专门抓这类。\n3. **WiFi 高温漂移**：45℃ 天线上频偏失锁。温度循环测试暴露。\n4. **MQTT 会话堆积**：断网测试暴露 clean_session=false 下消息堆积导致内存耗尽。\n\n## 五、判定纪律\n\n- FAIL 设备绝不\"再烧一次看看就好了\"——复现即根因排查，侥幸放行 = 客服成本×10。\n- 每批抽检固件 hash 与版本，防止烧错固件的整批事故。\n- 烧机数据留档：序列号 → 测试曲线 → 结果，售后对账有据可查。\n\n## 六、小批量（<100 台）的简化版\n\n没有工装也能做：\n\n1. 5 台抽检跑满 72h 上报 heap/reboot 曲线。\n2. 全量做 2 分钟功能自检（人工按清单）。\n3. 固件内置\"自检页面\"（设备 web 页一键跑全部检查并显示 PASS/FAIL）。\n\n## 七、检查清单\n\n- [ ] 固件内置老化/自检模式\n- [ ] heap、重启原因、断连曲线自动上报\n- [ ] 循环上电 + 断网重连纳入流程\n- [ ] 判定指标明文化，PASS/FAIL 不靠感觉\n- [ ] 烧机结果与序列号绑定留档"
+    },
+    {
+      "id": "p-rtos-mx",
+      "title": "FreeRTOS 优先级反转：一颗互斥量引发的「灵异卡顿」",
+      "category": "embedded",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "freertos-priority-inversion",
+      "tags": [
+        "FreeRTOS",
+        "RTOS",
+        "互斥量"
+      ],
+      "level": 3,
+      "excerpt": "低优先级任务拿着锁不放，高优先级干等——复现、破案到修复，理解优先级继承为什么必须开。",
+      "content": "# FreeRTOS 优先级反转：一颗互斥量引发的\"灵异卡顿\"\n\n> 低优先级任务拿着锁不放，高优先级任务干等——这是实时系统最经典的陷阱，附完整复现与修复。\n\n## 一、现象\n\n系统里三个任务：`sensorTask`（高，1kHz 采样）、`netTask`（中，上报）、`configTask`（低，读写配置）。偶发（几小时一次）传感器数据丢失 200ms——采样任务像\"睡着\"了一样。\n\n## 二、复现与破案\n\n时序还原（Tracealyzer / 手打 GPIO 翻转 + 示波器也能看）：\n\n```\nT0  configTask 拿到 mutexX（保护 Flash 写）\nT1  sensorTask 想拿 mutexX → 阻塞等待\nT2  netTask 就绪（优先级高于 configTask）→ 抢占 configTask\nT3  netTask 跑了 200ms（网络栈很慢）\n    → configTask 一直没机会释放锁\n    → sensorTask 被迫干等 200ms\n```\n\n这就是**优先级反转**：高优先级（sensorTask）被低优先级（configTask）拖累，而拖累的原因是中等优先级（netTask）插队。\n\n## 三、修复：互斥量的优先级继承\n\n```cpp\n// ❌ 错误：用二值信号量保护共享资源\nSemaphoreHandle_t xMutex = xSemaphoreCreateBinary();\nxSemaphoreGive(xMutex);\n\n// ✔ 正确：互斥量自带优先级继承\nSemaphoreHandle_t xMutex = xSemaphoreCreateMutex();\n```\n\n`xSemaphoreCreateMutex()` 创建的互斥量在\"高优先级任务等低优先级任务手里的锁\"时，会**临时把持有者提升到等待者的优先级**，netTask 就插不了队了：\n\n```\nT1' sensorTask 等 mutexX → configTask 被提升到 sensorTask 优先级\nT2' netTask 无法抢占 → configTask 快速写完释放锁\nT3' configTask 降回低优先级，sensorTask 拿锁继续\n```\n\n**纪律：保护共享资源一律 `CreateMutex`，信号量只用于任务间\"通知\"，不做锁。**\n\n## 四、进一步缩短临界区\n\n优先级继承治标，**缩小临界区**治本：\n\n```cpp\n// ❌ 拿着锁干重活\nxSemaphoreTake(cfgMutex, portMAX_DELAY);\nchar *json = readConfigAndFormat();   // 100ms 的 flash 读写\nxSemaphoreGive(cfgMutex);\n\n// ✔ 锁内只拷贝，重活在锁外\nchar local[256];\nxSemaphoreTake(cfgMutex, portMAX_DELAY);\nmemcpy(local, cfgCache, sizeof(local));   // <10μs\nxSemaphoreGive(cfgMutex);\njson = formatFrom(local);                  // 锁外慢慢格式化\n```\n\n终极方案：**不要共享**。配置由 configTask 独占，其他任务通过队列请求\"配置快照\"，锁就消失了——队列传值比传引用天然线程安全。\n\n## 五、相关陷阱速查\n\n1. **ISR 里不能拿 mutex**：优先级继承需要任务上下文，中断里用 `xSemaphoreTakeFromISR`（二值信号量）或干脆标志位。\n2. **递归锁**：同一任务要两次拿同一把锁用 `xSemaphoreCreateRecursiveMutex`，否则自己锁死自己。\n3. **锁超时**：`portMAX_DELAY` 是把双刃剑，排障期建议全部改成有限超时 + 错误上报，死锁立刻暴露而不是无声冻结。\n4. **vTaskPriorityInherit 只在 FreeRTOS 互斥量上有**：自己用关中断模拟锁的，别指望继承。\n5. **优先级数用尽**：FreeRTOS 默认 0~24，别把业务全挤在一个优先级里，也不要每任务一级——3~4 个层级足够。\n\n## 六、如何提前发现\n\n- configASSERT 开启（`configASSERT` 定义为死循环打印），断言非法调用。\n- 上线版保留 `vTaskList`/`uxTaskGetStackHighWaterMark` 的诊断接口，远程一键 dump 任务状态——卡顿时直接看到谁拿着锁、谁在等。\n- 关键任务跑\"金丝雀\"：sensorTask 每秒自检周期抖动，抖动超阈值立即 WARN + 上报，把\"灵异现象\"变成可量化曲线。\n\n## 七、检查清单\n\n- [ ] 共享资源全用 CreateMutex，二值信号量只做通知\n- [ ] 临界区内无 IO、无重活\n- [ ] ISR 不拿 mutex\n- [ ] 锁全部带超时（至少在诊断版本）\n- [ ] 有任务状态 dump 的远程诊断口"
+    },
+    {
+      "id": "e-log",
+      "title": "嵌入式日志系统设计：分级、落盘与远程拉取",
+      "category": "embedded",
+      "date": "2026-09-16",
+      "featured": false,
+      "slug": "embedded-logging-system",
+      "tags": [
+        "嵌入式",
+        "日志",
+        "排障"
+      ],
+      "level": 2,
+      "excerpt": "串口 print 不是日志系统。分级、环形落盘、远程拉取、重启原因——四件套让远程排障有据可查。",
+      "content": "# 嵌入式日志系统设计：分级、落盘与远程拉取\n\n> 设备在你手上只有几分钟，现场日志是唯一证人。但串口 print 不是日志系统——真正的日志要能分级、落盘、断网补传。\n\n## 一、日志的四个等级与使用纪律\n\n```\nERROR  影响功能的失败        每条都必须处理或上报\nWARN   异常但已自愈          限流（同一 warn 一分钟最多一条）\nINFO   关键状态迁移          开机、连云、OTA 开始/结束\nDEBUG  详细过程              默认关闭，远程可动态打开\n```\n\n纪律比格式重要：ERROR 满屏飞会让真正的错误被淹没；DEBUG 默认开着会把串口带宽吃光、拖慢 loop。**默认等级 WARN，排障时远程切 DEBUG，15 分钟后自动回落。**\n\n## 二、分级实现（ESP32 30 行版）\n\n```cpp\n#include <esp_log.h>\nstatic const char *TAG = \"app\";\n#define LOGD(...) esp_log_write(ESP_LOG_DEBUG, TAG, __VA_ARGS__)\n\n// 动态调级：MQTT 命令 \"log/level\" -> \"debug\"\nvoid onLogLevel(const char *lv) {\n  if (!strcmp(lv, \"debug\")) esp_log_level_set(\"*\", ESP_LOG_DEBUG);\n  else esp_log_level_set(\"*\", ESP_LOG_WARN);\n  xTimerStart(fallbackTimer, 0);   // 15 分钟后自动回落 WARN\n}\n```\n\n关键设计：**等级是运行时配置，不是编译期常量**——否则现场出问题还是得重新烧录。\n\n## 三、落盘：环形日志 + NVS 快照\n\n串口日志一断电就没了。落盘策略分两级：\n\n### 1. RAM 环形缓冲（最近 N 条）\n\n```cpp\n#define RING_N 64\nstatic char ring[RING_N][128];\nstatic int ringIdx = 0;\n\nvoid ringPush(const char *line) {\n  strncpy(ring[ringIdx], line, 127);\n  ringIdx = (ringIdx + 1) % RING_N;\n}\n```\n\n### 2. 关键事件写 NVS（不怕断电）\n\n```cpp\nPreferences p;\nvoid logCritical(const char *event) {\n  p.begin(\"clog\", false);\n  uint32_t seq = p.getUInt(\"seq\", 0) + 1;\n  p.putUInt(\"seq\", seq);\n  char key[12]; snprintf(key, 12, \"e%lu\", seq % 32);\n  char val[100];\n  snprintf(val, 100, \"%lu:%s\", millis()/1000, event);\n  p.putString(key, val);        // 环形 32 条，覆盖最旧的\n  p.end();\n}\n```\n\n**只写关键事件**（重启原因、ERROR、状态迁移）进 NVS——NVS 有擦写寿命，DEBUG 级别日志写 NVS 等于给 Flash 判死刑。\n\n## 四、远程拉取：MQTT 分块传输\n\n```cpp\n// topic: dev/<id>/log/dump\nvoid handleLogDump() {\n  const int CH = 900;                    // 每块 900B，留 MQTT 余量\n  int total = ringIdx;\n  for (int i = 0; i < RING_N; i += 1) {\n    char topic[48];\n    snprintf(topic, 48, \"dev/%s/log/chunk/%d\", DEVICE_ID, i);\n    client.publish(topic, ring[(ringIdx + i) % RING_N]);\n    delay(20);                           // 避免突发塞爆 broker\n  }\n  client.publish(\"dev/x/log/dump_end\", \"1\");\n}\n```\n\n服务端（Node-RED 或后端）按序拼块落文件。离线场景：网关缓存 dump 请求，设备上线后补拉——**日志补传优先级低于遥测**，QoS 用 0 就够。\n\n## 五、重启原因：远程排障的第一问\n\n```cpp\n#include <esp_system.h>\nesp_reset_reason_t r = esp_reset_reason();\n// 1 电源上电  2 SW 重启  4 panic  5 中断看门狗  6 任务看门狗  7 深睡唤醒  9 异常\n```\n\n开机第一件事：读 NVS 里的上次日志快照 + 重启计数，`INFO` 打一条：\n\n```\nboot #37, last=panic(4), uptime=86411s, fw=1.2.0\n```\n\n这一条日志能直接回答\"是断电、是崩溃、还是人为重启\"，节省一半的远程排障时间。\n\n## 六、日志的坑\n\n1. **日志本身导致崩溃**：printf 不可重入，中断里调用会随机花屏——中断日志入队，任务里统一输出。\n2. **日志拖慢实时性**：9600 波特率打 200 字节 = 200ms 阻塞；要么提速 921600，要么异步。\n3. **时间戳漂移**：NTP 没同步前用 `uptime`，同步后切真实时间戳，并在日志里记录切换点。\n4. **隐私**：日志里绝不出现完整手机号/位置/密钥——日志文件会被整包传走，按生产数据对待。\n5. **量级失控**：给每类 DEBUG 日志限频（同类 1s 最多 5 条），否则一次异常刷一万条把环形缓冲冲爆。\n\n## 七、检查清单\n\n- [ ] 等级运行时可切，且会自动回落\n- [ ] RAM 环形 + NVS 关键事件双通道\n- [ ] 开机打印重启原因与计数\n- [ ] 远程 dump 分块 + 离线补传\n- [ ] 中断日志异步化\n- [ ] 敏感信息脱敏"
+    },
+    {
       "id": "n-dns",
       "title": "DNS 与 mDNS：为什么设备连上了却「找不到服务」",
       "category": "net",

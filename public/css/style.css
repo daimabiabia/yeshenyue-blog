@@ -110,11 +110,12 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 88px;      /* 锚点不被吸顶导航遮住 */
   -webkit-text-size-adjust: 100%;
+  background: var(--page);       /* 底色在 html 上，body 透出让 #backdrop 背景层可见 */
 }
 
 body {
   margin: 0;
-  background: var(--page);
+  background: transparent;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--fs-base);
@@ -122,8 +123,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "kern" 1, "liga" 1;
-  /* 纸纹噪点：极轻，增加质感不干扰阅读 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
 }
 
 img, svg { max-width: 100%; }
@@ -1277,8 +1276,9 @@ p:last-child { margin-bottom: 0; }
 .foot-list { display: grid; gap: 10px; }
 .foot-list .foot-card { padding: 12px 16px; box-shadow: var(--sh-xs); }
 
-/* ---- Ctrl+K 命令面板 / 快捷键帮助（共用遮罩） ---- */
-#cmdk, #kbdHelp { position: fixed; inset: 0; z-index: calc(var(--z-lb) + 10); }
+/* ---- Ctrl+K 命令面板 / 快捷键帮助 / 特效中心 / 网盘预览（共用遮罩） ---- */
+#cmdk, #kbdHelp, #fxPanel, #drivePreview { position: fixed; inset: 0; z-index: calc(var(--z-lb) + 10); }
+#drivePreview { overflow-y: auto; }
 .cmdk-mask {
   position: absolute; inset: 0; background: rgba(10, 10, 10, .45);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
@@ -1576,16 +1576,16 @@ p:last-child { margin-bottom: 0; }
    蓝图网格 / 终端元素 / mono 强化 / CRT 质感 / 滚动条
    ============================================================ */
 
-/* ---- 21.1 全站蓝图网格底纹（叠加在纸纹噪点之上） ---- */
-body {
+/* ---- 21.1 全站蓝图网格底纹（画在 #backdrop 上，body 已透明） ---- */
+#backdrop::before {
+  content: ''; position: absolute; inset: 0;
   background-image:
     linear-gradient(var(--line-soft) 1px, transparent 1px),
     linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
   background-size: 30px 30px, 30px 30px, 140px 140px;
-  background-attachment: fixed, fixed, fixed;
 }
-[data-theme="dark"] body {
+[data-theme="dark"] #backdrop::before {
   background-image:
     linear-gradient(rgba(196, 255, 61, .045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(196, 255, 61, .045) 1px, transparent 1px),
@@ -1857,6 +1857,21 @@ body {
 .d-relock { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; color: inherit; font-weight: 700; }
 .d-relock:hover { color: var(--ink); background: var(--lime-soft, var(--page-2)); }
 
+/* -- 22.7 站主上传面板 -- */
+.owner-panel {
+  border: 3px dashed var(--line); border-radius: 12px; background: var(--page-2);
+  padding: 14px 18px; box-shadow: var(--sh-sm);
+}
+.owner-panel.owner-on { border-style: solid; border-color: var(--lime); }
+.op-title { font-weight: 800; font-size: 14px; margin-bottom: 10px; color: var(--ink); }
+.op-dir { font-size: 12px; font-weight: 700; margin-left: 10px; padding: 2px 8px; border: 2px solid var(--line); border-radius: 6px; background: var(--lime); color: var(--ink); }
+.owner-panel input[type="password"], .owner-panel input[type="text"] {
+  border: 2.5px solid var(--line); border-radius: 8px; background: var(--page);
+  color: var(--ink); padding: 8px 12px; font-family: var(--font-mono); font-size: 13px; outline: none;
+}
+.owner-panel input:focus { border-color: var(--lime); }
+.owner-panel input[type="file"] { font-size: 12.5px; color: var(--ink-2); max-width: 300px; }
+
 /* ================= 23. 照片墙 ================= */
 .g-wall { columns: 4 240px; column-gap: 22px; }
 .g-photo {
@@ -1947,6 +1962,9 @@ body {
 }
 
 /* ================= 25. 特效中心面板 ================= */
+/* 面板限高 + 开关列表内部滚动，避免小屏被裁掉看不到重置按钮 */
+.fx-panel { display: flex; flex-direction: column; margin-top: 8vh; max-height: 78vh; }
+.fx-panel .fx-rows { overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
 .fx-rows { padding: 4px 14px 8px; }
 .fx-row {
   display: grid; grid-template-columns: 22px auto 1fr; align-items: center; gap: 10px;
@@ -1969,4 +1987,68 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .g-photo { animation: none; }
   .m-bar b { animation: none; }
+}
+
+/* ============================================================
+   26. 多层动态背景（backdrop.js 生成 #backdrop）
+   噪点网格(21.1) / 电路走线 / 极光色斑 / 上浮代码字符
+   ============================================================ */
+#backdrop {
+  position: fixed; inset: 0; z-index: -1;
+  pointer-events: none; overflow: hidden;
+}
+
+/* -- 26.1 电路走线：PCB 铜膜质感（浅色=墨线，深色=荧光绿） -- */
+#backdrop .bd-circuit {
+  position: absolute; inset: 0; opacity: .5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cg fill='none' stroke='rgba(10,10,10,0.055)' stroke-width='1.6'%3E%3Cpath d='M30 40h120a14 14 0 0 1 14 14v92a14 14 0 0 0 14 14h100'/%3E%3Cpath d='M30 80h84a10 10 0 0 1 10 10v120a10 10 0 0 0 10 10h150'/%3E%3Cpath d='M390 120v110a14 14 0 0 1-14 14h-96'/%3E%3Cpath d='M360 390V272a12 12 0 0 0-12-12h-84'/%3E%3Cpath d='M60 390v-96a12 12 0 0 1 12-12h70'/%3E%3Cpath d='M230 40v70a12 12 0 0 0 12 12h60a12 12 0 0 1 12 12v40'/%3E%3C/g%3E%3Cg fill='rgba(10,10,10,0.075)'%3E%3Ccircle cx='30' cy='40' r='4.5'/%3E%3Ccircle cx='30' cy='80' r='4.5'/%3E%3Ccircle cx='278' cy='160' r='4.5'/%3E%3Ccircle cx='390' cy='120' r='4.5'/%3E%3Ccircle cx='264' cy='260' r='4.5'/%3E%3Ccircle cx='360' cy='390' r='4.5'/%3E%3Ccircle cx='60' cy='390' r='4.5'/%3E%3Ccircle cx='314' cy='174' r='4.5'/%3E%3Ccircle cx='142' cy='282' r='4.5'/%3E%3Ccircle cx='230' cy='40' r='4.5'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 420px 420px;
+}
+[data-theme="dark"] #backdrop .bd-circuit {
+  opacity: .85;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cg fill='none' stroke='rgba(196,255,61,0.06)' stroke-width='1.6'%3E%3Cpath d='M30 40h120a14 14 0 0 1 14 14v92a14 14 0 0 0 14 14h100'/%3E%3Cpath d='M30 80h84a10 10 0 0 1 10 10v120a10 10 0 0 0 10 10h150'/%3E%3Cpath d='M390 120v110a14 14 0 0 1-14 14h-96'/%3E%3Cpath d='M360 390V272a12 12 0 0 0-12-12h-84'/%3E%3Cpath d='M60 390v-96a12 12 0 0 1 12-12h70'/%3E%3Cpath d='M230 40v70a12 12 0 0 0 12 12h60a12 12 0 0 1 12 12v40'/%3E%3C/g%3E%3Cg fill='rgba(196,255,61,0.09)'%3E%3Ccircle cx='30' cy='40' r='4.5'/%3E%3Ccircle cx='30' cy='80' r='4.5'/%3E%3Ccircle cx='278' cy='160' r='4.5'/%3E%3Ccircle cx='390' cy='120' r='4.5'/%3E%3Ccircle cx='264' cy='260' r='4.5'/%3E%3Ccircle cx='360' cy='390' r='4.5'/%3E%3Ccircle cx='60' cy='390' r='4.5'/%3E%3Ccircle cx='314' cy='174' r='4.5'/%3E%3Ccircle cx='142' cy='282' r='4.5'/%3E%3Ccircle cx='230' cy='40' r='4.5'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* -- 26.2 极光色斑：超大 radial 光团缓慢漂移（60~110s 往返） -- */
+#backdrop .bd-blob {
+  position: absolute; display: block; border-radius: 50%;
+  filter: blur(2px);
+  mix-blend-mode: multiply;         /* 浅色主题：像水彩洇进纸里 */
+  opacity: .16;
+  animation: bd-drift var(--bd-dur, 90s) ease-in-out infinite alternate;
+  will-change: transform;
+}
+[data-theme="dark"] #backdrop .bd-blob {
+  mix-blend-mode: screen;           /* 深色主题：霓虹辉光 */
+  opacity: .1;
+}
+#backdrop .bd-b1 { background: radial-gradient(circle at 40% 40%, rgba(255,46,136,.5), transparent 62%); --bd-dur: 74s; }
+#backdrop .bd-b2 { background: radial-gradient(circle at 55% 45%, rgba(0,163,255,.42), transparent 60%); --bd-dur: 96s; }
+#backdrop .bd-b3 { background: radial-gradient(circle at 50% 50%, rgba(163,230,53,.4), transparent 58%); --bd-dur: 112s; }
+@keyframes bd-drift {
+  0%   { transform: translate3d(-4%, -3%, 0) scale(1); }
+  50%  { transform: translate3d(5%, 4%, 0) scale(1.12); }
+  100% { transform: translate3d(-2%, 6%, 0) scale(.94); }
+}
+
+/* -- 26.3 上浮代码字符：像终端里慢慢飘起的指令碎片 -- */
+#backdrop .bd-glyphs span {
+  position: absolute; bottom: -8vh; display: block;
+  font-family: var(--font-mono); font-weight: 700; color: var(--ink);
+  letter-spacing: .1em; white-space: nowrap;
+  animation: bd-float linear infinite;
+}
+[data-theme="dark"] #backdrop .bd-glyphs span { color: var(--lime); }
+@keyframes bd-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-120vh); }
+}
+
+/* -- 26.4 特效开关：背景动效关闭 → 暂停漂移、隐去字符 -- */
+:root.fx-no-bg #backdrop .bd-blob,
+:root.fx-no-bg #backdrop .bd-glyphs span { animation-play-state: paused; }
+:root.fx-no-bg #backdrop .bd-glyphs { opacity: 0; transition: opacity .6s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  #backdrop .bd-blob, #backdrop .bd-glyphs span { animation: none; }
 }

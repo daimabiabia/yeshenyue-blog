@@ -562,6 +562,48 @@
       "message": "我是雫，请多指教 ~"
     },
     {
+      "name": "Miku",
+      "paths": [
+        "/js/live2d/models/miku/miku.model.json"
+      ],
+      "message": "初次见面，我是 Miku ~ ♪"
+    },
+    {
+      "name": "Koharu",
+      "paths": [
+        "/js/live2d/models/koharu/koharu.model.json"
+      ],
+      "message": "小晴上线，今天也元气满满！"
+    },
+    {
+      "name": "Nico",
+      "paths": [
+        "/js/live2d/models/nico/nico.model.json"
+      ],
+      "message": "Nico Nico-nii ~"
+    },
+    {
+      "name": "Haruto",
+      "paths": [
+        "/js/live2d/models/haruto/haruto.model.json"
+      ],
+      "message": "我是 Haruto，请多关照。"
+    },
+    {
+      "name": "Wanko",
+      "paths": [
+        "/js/live2d/models/wanko/wanko.model.json"
+      ],
+      "message": "汪！柴犬 wanko 待命中。"
+    },
+    {
+      "name": "Nipsilon",
+      "paths": [
+        "/js/live2d/models/nipsilon/nipsilon.model.json"
+      ],
+      "message": "Nipsilon 悄悄上线了喵 ~"
+    },
+    {
       "name": "z16",
       "paths": [
         "/js/live2d/models/z16/z16.model.json"

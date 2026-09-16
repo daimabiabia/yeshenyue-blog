@@ -1,0 +1,85 @@
+# FreeRTOS 优先级反转：一颗互斥量引发的"灵异卡顿"
+
+> 低优先级任务拿着锁不放，高优先级任务干等——这是实时系统最经典的陷阱，附完整复现与修复。
+
+## 一、现象
+
+系统里三个任务：`sensorTask`（高，1kHz 采样）、`netTask`（中，上报）、`configTask`（低，读写配置）。偶发（几小时一次）传感器数据丢失 200ms——采样任务像"睡着"了一样。
+
+## 二、复现与破案
+
+时序还原（Tracealyzer / 手打 GPIO 翻转 + 示波器也能看）：
+
+```
+T0  configTask 拿到 mutexX（保护 Flash 写）
+T1  sensorTask 想拿 mutexX → 阻塞等待
+T2  netTask 就绪（优先级高于 configTask）→ 抢占 configTask
+T3  netTask 跑了 200ms（网络栈很慢）
+    → configTask 一直没机会释放锁
+    → sensorTask 被迫干等 200ms
+```
+
+这就是**优先级反转**：高优先级（sensorTask）被低优先级（configTask）拖累，而拖累的原因是中等优先级（netTask）插队。
+
+## 三、修复：互斥量的优先级继承
+
+```cpp
+// ❌ 错误：用二值信号量保护共享资源
+SemaphoreHandle_t xMutex = xSemaphoreCreateBinary();
+xSemaphoreGive(xMutex);
+
+// ✔ 正确：互斥量自带优先级继承
+SemaphoreHandle_t xMutex = xSemaphoreCreateMutex();
+```
+
+`xSemaphoreCreateMutex()` 创建的互斥量在"高优先级任务等低优先级任务手里的锁"时，会**临时把持有者提升到等待者的优先级**，netTask 就插不了队了：
+
+```
+T1' sensorTask 等 mutexX → configTask 被提升到 sensorTask 优先级
+T2' netTask 无法抢占 → configTask 快速写完释放锁
+T3' configTask 降回低优先级，sensorTask 拿锁继续
+```
+
+**纪律：保护共享资源一律 `CreateMutex`，信号量只用于任务间"通知"，不做锁。**
+
+## 四、进一步缩短临界区
+
+优先级继承治标，**缩小临界区**治本：
+
+```cpp
+// ❌ 拿着锁干重活
+xSemaphoreTake(cfgMutex, portMAX_DELAY);
+char *json = readConfigAndFormat();   // 100ms 的 flash 读写
+xSemaphoreGive(cfgMutex);
+
+// ✔ 锁内只拷贝，重活在锁外
+char local[256];
+xSemaphoreTake(cfgMutex, portMAX_DELAY);
+memcpy(local, cfgCache, sizeof(local));   // <10μs
+xSemaphoreGive(cfgMutex);
+json = formatFrom(local);                  // 锁外慢慢格式化
+```
+
+终极方案：**不要共享**。配置由 configTask 独占，其他任务通过队列请求"配置快照"，锁就消失了——队列传值比传引用天然线程安全。
+
+## 五、相关陷阱速查
+
+1. **ISR 里不能拿 mutex**：优先级继承需要任务上下文，中断里用 `xSemaphoreTakeFromISR`（二值信号量）或干脆标志位。
+2. **递归锁**：同一任务要两次拿同一把锁用 `xSemaphoreCreateRecursiveMutex`，否则自己锁死自己。
+3. **锁超时**：`portMAX_DELAY` 是把双刃剑，排障期建议全部改成有限超时 + 错误上报，死锁立刻暴露而不是无声冻结。
+4. **vTaskPriorityInherit 只在 FreeRTOS 互斥量上有**：自己用关中断模拟锁的，别指望继承。
+5. **优先级数用尽**：FreeRTOS 默认 0~24，别把业务全挤在一个优先级里，也不要每任务一级——3~4 个层级足够。
+
+## 六、如何提前发现
+
+- configASSERT 开启（`configASSERT` 定义为死循环打印），断言非法调用。
+- 上线版保留 `vTaskList`/`uxTaskGetStackHighWaterMark` 的诊断接口，远程一键 dump 任务状态——卡顿时直接看到谁拿着锁、谁在等。
+- 关键任务跑"金丝雀"：sensorTask 每秒自检周期抖动，抖动超阈值立即 WARN + 上报，把"灵异现象"变成可量化曲线。
+
+## 七、检查清单
+
+- [ ] 共享资源全用 CreateMutex，二值信号量只做通知
+- [ ] 临界区内无 IO、无重活
+- [ ] ISR 不拿 mutex
+- [ ] 锁全部带超时（至少在诊断版本）
+- [ ] 有任务状态 dump 的远程诊断口
