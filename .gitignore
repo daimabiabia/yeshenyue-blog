@@ -10,3 +10,5 @@ data/auth.json
 server.pid
 
 data/auth.json.bak-*
+*.bak-*
+*.bak
