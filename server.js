@@ -993,6 +993,15 @@ ${items}
   }
 });
 
+/* 全局异常兜底：常驻服务不允许因单次未捕获异常静默死亡 */
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && err.stack || err);
+  try { fs.appendFileSync(path.join(ROOT, '.server-crash.log'), new Date().toISOString() + ' ' + ((err && err.stack) || err) + String.fromCharCode(10)); } catch (_) {}
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason && reason.stack || reason);
+});
+
 server.listen(PORT, () => {
   console.log(`夜神月博客已启动: http://localhost:${PORT}`);
   console.log(`后台管理: http://localhost:${PORT}/admin  (默认密码 yeshenyue)`);

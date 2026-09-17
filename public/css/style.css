@@ -2327,3 +2327,7 @@ p:last-child { margin-bottom: 0; }
 .d-desc { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--ink-2); }
 .d-name .d-desc { opacity: .85; }
 [data-theme=dark] .d-desc { color: var(--ink-3); }
+/* fix: 深色卡内的浅底元素继承浅色文字导致白底白字不可见 */
+.m-card-dark .m-badge,
+.m-card-dark .m-proj { color: var(--ink); }
+.m-card-dark .m-proj .mono { color: var(--ink-2); }

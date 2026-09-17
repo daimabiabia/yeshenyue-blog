@@ -881,11 +881,21 @@
     document.title = '漂流瓶海湾 · 友链';
     resetSeo();
     const friends = (DATA.site.friendLinks || []);
+    /* 网格 + 抖动散布：任意数量都不重叠 */
+    const nB = friends.length, cols = 4, rows = Math.max(1, Math.ceil(nB / cols));
+    const pos = (i, seed) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const jx = seed % 6, jy = (seed >> 2) % 7;
+      const left = 7 + col * 22 + jx;
+      const top = rows === 1 ? 40 + jy : 30 + row * (44 / (rows - 1)) + jy * 0.6;
+      return [Math.min(Math.round(left * 10) / 10, 88), Math.min(Math.round(top * 10) / 10, 78)];
+    };
     const bottles = friends.map((l, i) => {
       const hue = (i * 67 + Math.floor(strHash(l.name || String(i)))) % 360;
       const drift = 14 + (strHash(l.name || '') % 10);
+      const bl = pos(i, strHash(l.name || String(i)));
       return `<button type="button" class="bottle" data-i="${i}"
-        style="--h:${hue};--dl:${-(i * 2.7) % 9}s;--drift:${drift}s;left:${(i % 5) * 19 + 6 + (strHash(l.name || '') % 7)}%;top:${28 + ((i * 37) % 46)}%">
+        style="--h:${hue};--dl:${-(i * 2.7) % 9}s;--drift:${drift}s;left:${bl[0]}%;top:${bl[1]}%">
         <span class="bt-body">
           <span class="bt-letter mono" style="--h:${hue}">${escapeHtml((l.name || '?').slice(0, 1))}</span>
           <span class="bt-cork"></span>
@@ -1170,16 +1180,16 @@
       ['ORIGIN', '「登神长阶」启动', '0 → 1，把学习过程本身做成作品。'],
     ];
     const gear = [
-      ['🛰 主战线', '威胁狩猎 · 遥测分析 · 检测工程'],
-      ['🗡 武器库', '「悠然渗透武器库」197 tools / 10 categories'],
-      ['📡 博客矩阵', 'www.yyyrlovelsw.top · 本站全栈自研'],
-      ['🤝 战术协同', '鹿鹿（电厂蓝队）· www.lulu.sec'],
-      ['🧠 修炼支线', '销控证 / 易经奇门 / 红队（三线并行）'],
-      ['☕ 燃料', '咖啡因 · 深夜 · 「再抓一个就睡」'],
+      ['🛰 主战线', '威胁狩猎 · 遥测分析 · 检测工程', '先于攻击者发现痕迹'],
+      ['🗡 武器库', '「悠然渗透武器库」', '197 tools / 10 categories · 持续整编'],
+      ['📡 博客矩阵', 'www.yyyrlovelsw.top', '主站 WordPress · 本站全栈自研'],
+      ['🤝 战术协同', '鹿鹿（电厂蓝队）', 'www.lulu.sec · 蓝红联动'],
+      ['🧠 修炼支线', '销控证 / 易经奇门 / 红队', '三线并行 · 融会贯通'],
+      ['☕ 燃料', '咖啡因 · 深夜', '「再抓一个就睡」'],
     ];
     const badges = [
       ['🎯', '威胁狩猎'], ['🔴', '红队'], ['📡', 'IoT 安全'], ['🏗', '全栈自研'],
-      ['🧩', '逆向工程'], ['🛡', '蓝队视角'], ['✍️', '107 篇输出'], ['⚡', '24/7 ON CALL'],
+      ['🧩', '逆向工程'], ['🛡', '蓝队视角'], ['✍️', posts.length + ' 篇输出'], ['⚡', '24/7 ON CALL'],
     ];
     const stats = [
       [String(posts.length), '篇学习笔记'],
@@ -1190,9 +1200,9 @@
     const skillRows = skills.map((s, i) => `
       <div class="m-skill" style="--w:${s[1]}%;--dl:${i * 0.08}s"><span class="mono">${escapeHtml(s[0])}</span><i class="m-bar"><b></b></i><em class="mono">${s[1]}</em></div>`).join('');
     const tlRows = timeline.map((t) => `
-      <div class="m-tl-item"><span class="m-tl-tag mono">${escapeHtml(t[0])}</span><div><b>${escapeHtml(t[1])}</b><p>${escapeHtml(t[2])}</p></div></div>`).join('');
+      <div class="m-tl-item"><span class="m-tl-tag mono">${escapeHtml(t[0])}</span><div><b>${escapeHtml(t[1])}</b><p>${escapeHtml(t[2] || '')}</p></div></div>`).join('');
     const gearRows = gear.map((g) => `
-      <div class="m-gear"><span class="mg-ico">${g[0]}</span><div><b>${escapeHtml(g[1])}</b><p>${escapeHtml(g[2])}</p></div></div>`).join('');
+      <div class="m-gear"><span class="mg-ico">${g[0]}</span><div><b>${escapeHtml(g[1])}</b><p>${escapeHtml(g[2] || '')}</p></div></div>`).join('');
     const badgeRows = badges.map((b) => `
       <span class="m-badge" title="${escapeAttr(b[1])}"><i>${b[0]}</i>${escapeHtml(b[1])}</span>`).join('');
     const projRows = (c.projects || []).map((p) => `

@@ -43,6 +43,8 @@
     localStorage.removeItem('adminToken');
     $('#loginView').classList.remove('hidden');
     $('#dashView').classList.add('hidden');
+    const lb = $('#logout');
+    if (lb) lb.hidden = true;
     if (reason) $('#loginMsg').textContent = reason;
   }
 
@@ -61,6 +63,8 @@
     try {
       const j = await api('POST', '/api/login', { password: pw });
       localStorage.setItem('adminToken', j.token);
+      const lb = $('#logout');
+      if (lb) lb.hidden = false;
       await enterDash();
     } catch (e) { $('#loginMsg').textContent = e.message; }
   }
@@ -566,7 +570,8 @@
       const t = document.querySelector('.tabs button[data-tab="' + b.dataset.goto + '"]');
       if (t) t.click();
     });
-    if (token()) enterDash();
+    if (token()) { enterDash(); }
+    else { const lb = $('#logout'); if (lb) lb.hidden = true; }
   }
   document.addEventListener('DOMContentLoaded', init);
 })();

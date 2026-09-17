@@ -185,6 +185,36 @@
         "name": "悠然的窝",
         "url": "https://www.yyyrlovelsw.top",
         "desc": "悠然安全工作室 · 主博客 WordPress"
+      },
+      {
+        "name": "阮一峰的网络日志",
+        "url": "https://www.ruanyifeng.com/blog/",
+        "desc": "科技爱好者周刊 · 每周更新"
+      },
+      {
+        "name": "酷壳 Coolshell",
+        "url": "https://coolshell.cn/",
+        "desc": "陈皓 · 硬核编程与工程思考"
+      },
+      {
+        "name": "FreeBuf",
+        "url": "https://www.freebuf.com/",
+        "desc": "网络安全行业门户 · 漏洞与攻防"
+      },
+      {
+        "name": "先知社区",
+        "url": "https://xz.aliyun.com/",
+        "desc": "阿里云攻防社区 · 实战技术分享"
+      },
+      {
+        "name": "Seebug Paper",
+        "url": "https://paper.seebug.org/",
+        "desc": "知道创宇 · 漏洞分析与情报"
+      },
+      {
+        "name": "Hackaday",
+        "url": "https://hackaday.com/",
+        "desc": "硬件极客日报 · IoT 改装无极限"
       }
     ]
   },
