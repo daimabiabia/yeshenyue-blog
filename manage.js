@@ -14,7 +14,8 @@ const path = require('path');
 const ROOT = __dirname;
 const PID_FILE = path.join(ROOT, 'server.pid');
 const LOG_FILE = path.join(ROOT, 'server.log');
-const PORT = Number(process.env.PORT) || 3000;
+const PAUSE_FILE = path.join(ROOT, '.paused'); /* 存在时看门狗不自动拉起 */
+const PORT = Number(process.env.PORT) || 3210;
 
 function readPid() {
   try { return parseInt(fs.readFileSync(PID_FILE, 'utf8'), 10); } catch (e) { return null; }
@@ -44,7 +45,17 @@ function portInUse() {
   });
 }
 
+function portListenerPid() {
+  /* 用 netstat 找出占用本端口的监听 PID（本端口为博客专属，可安全兜底） */
+  try {
+    const out = cp.execSync('netstat -ano | findstr :' + PORT + ' | findstr LISTENING', { encoding: 'utf8' });
+    const m = out.match(/LISTENING\s+(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  } catch (e) { return null; }
+}
+
 function start() {
+  try { fs.unlinkSync(PAUSE_FILE); } catch (e) {} /* 手动启动 = 解除停机标记，看门狗恢复护航 */
   const running = ourPid();
   if (running) {
     console.log('✅ 博客服务已在运行（PID ' + running + '）');
@@ -56,6 +67,7 @@ function start() {
     cwd: ROOT, detached: true,
     stdio: ['ignore', out, out], env: process.env
   });
+  child.unref(); /* 关键：解除引用，父进程退出不连带杀掉服务 */
   fs.writeFileSync(PID_FILE, String(child.pid));
   console.log('🚀 已启动博客服务（PID ' + child.pid + '）');
   console.log('   前台：http://localhost:' + PORT);
@@ -64,16 +76,31 @@ function start() {
 }
 
 function stop() {
-  const pid = ourPid();
-  if (!pid) { console.log('ℹ️  当前没有由本脚本启动的服务进程。'); return; }
+  let pid = ourPid();
+  let via = 'PID 文件';
+  if (!pid) {
+    /* 兜底：看门狗/手动启动的进程没有 PID 文件，按专属端口找监听者 */
+    pid = portListenerPid();
+    via = '端口 ' + PORT;
+  }
+  if (!pid) { console.log('ℹ️  当前没有运行中的博客服务。'); return; }
   killPid(pid);
   try { fs.unlinkSync(PID_FILE); } catch (e) {}
-  console.log('🛑 已停止博客服务（PID ' + pid + '）');
+  fs.writeFileSync(PAUSE_FILE, new Date().toISOString()); /* 抑制看门狗 5 分钟内复活 */
+  console.log('🛑 已停止博客服务（PID ' + pid + '，经' + via + '定位）');
+  console.log('   ⏸ 已放置停机标记（.paused），看门狗不会自动拉起；运行 start / toggle 即恢复。');
 }
 
 function status() {
   const pid = ourPid();
-  console.log(pid ? '✅ 运行中（PID ' + pid + '）' : '⭕ 未运行');
+  const listener = portListenerPid();
+  if (pid) {
+    console.log('✅ 运行中（PID ' + pid + '）  前台：http://localhost:' + PORT);
+  } else if (listener) {
+    console.log('✅ 运行中（PID ' + listener + '，非本脚本启动）  前台：http://localhost:' + PORT);
+  } else {
+    console.log('⭕ 未运行');
+  }
 }
 
 (async () => {
