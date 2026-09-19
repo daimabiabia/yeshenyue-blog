@@ -1002,7 +1002,38 @@ process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason && reason.stack || reason);
 });
 
-server.listen(PORT, () => {
-  console.log(`夜神月博客已启动: http://localhost:${PORT}`);
-  console.log(`后台管理: http://localhost:${PORT}/admin  (默认密码 yeshenyue)`);
-});
+/* 端口自适应：首选端口被占用时自动 +1（最多 +20），实际端口写入 .port 供启停脚本/看门狗读取。
+ * 注意：Windows 上 server.listen 对被占端口可能出现"成功回调与 EADDRINUSE 同时触发"的假成功，
+ * 因此先独立探测端口可用性再正式监听，error 事件仅作竞态兜底。 */
+function probePort(port, timeoutMs) {
+  return new Promise((resolve) => {
+    const s = new http.Server();
+    s.once('error', () => resolve(false));
+    s.once('listening', () => s.close(() => resolve(true)));
+    s.listen(port);
+    if (timeoutMs) setTimeout(() => resolve(false), timeoutMs).unref && null;
+  });
+}
+async function startServer() {
+  let port = PORT;
+  for (let i = 0; i <= 20; i++) {
+    if (await probePort(port)) break;
+    console.warn(`[port] ${port} 已被占用，自动改用 ${port + 1}`);
+    port++;
+    if (i === 20) {
+      console.error(`[port] ${PORT}~${port} 全部被占用，放弃启动`);
+      process.exit(1);
+    }
+  }
+  server.once('error', (err) => {
+    console.error('[server error]', err && err.stack || err);
+    process.exit(1);
+  });
+  server.listen(port, () => {
+    try { fs.writeFileSync(path.join(ROOT, '.port'), String(port)); } catch (_) {}
+    console.log(`夜神月博客已启动: http://localhost:${port}`);
+    console.log(`后台管理: http://localhost:${port}/admin  (默认密码 yeshenyue)`);
+    if (port !== PORT) console.log(`[port] 注意：首选端口 ${PORT} 被占用，已自动改用 ${port}`);
+  });
+}
+startServer();
