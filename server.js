@@ -26,7 +26,7 @@ const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
 const LIKE_FILE = path.join(DATA_DIR, 'likes.json');
 const COMMENT_FILE = path.join(DATA_DIR, 'comments.json');
 const DRIVE_DIR = path.join(DATA_DIR, 'drive');
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3210;
 const MAX_BODY = 6 * 1024 * 1024; // 请求体上限 6MB
 const MAX_UPLOAD = 4 * 1024 * 1024; // 图片上限 4MB
 const MAX_DRIVE_UPLOAD = 30 * 1024 * 1024; // 网盘单文件上限 30MB
@@ -673,7 +673,7 @@ const server = http.createServer(async (req, res) => {
     /* ---- RSS 订阅源：最新 30 篇，标题 + 摘要 + 链接 ---- */
     if (method === 'GET' && pathname === '/rss.xml') {
       const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-      const base = 'http' + (req.headers['x-forwarded-proto'] === 'https' ? 's' : '') + '://' + (req.headers.host || 'localhost:3000');
+      const base = 'http' + (req.headers['x-forwarded-proto'] === 'https' ? 's' : '') + '://' + (req.headers.host || 'localhost:3210');
       const cats = Object.fromEntries((site.site.categories || []).map((c) => [c.id, c.name]));
       const items = site.posts.slice(0, 30).map((p) => {
         const link = base + '/#/post/' + (p.slug || p.id);
