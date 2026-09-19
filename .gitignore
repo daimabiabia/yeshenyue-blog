@@ -12,3 +12,7 @@ server.pid
 data/auth.json.bak-*
 *.bak-*
 *.bak
+.port
+.paused
+server.pid
+server.log
