@@ -81,6 +81,7 @@ function start() {
   if (running) {
     console.log('✅ 博客服务已在运行（PID ' + running.pid + '，经' + running.via + '定位）');
     console.log('   前台：http://localhost:' + running.port);
+    openBrowser(running.port);
     return;
   }
   const out = fs.openSync(LOG_FILE, 'a');
@@ -101,6 +102,21 @@ function start() {
   console.log('   前台：http://localhost:' + shown + (shown !== PORT ? '  （端口 ' + PORT + ' 被占用，已自动改用 ' + shown + '）' : ''));
   console.log('   后台：http://localhost:' + shown + '/admin');
   console.log('   关闭：再次双击本脚本，或运行  node manage.js stop');
+  openBrowser(shown);
+}
+
+function openBrowser(port) {
+  /* 拉起系统默认浏览器（explorer 转交 URL 最稳，不依赖具体浏览器路径） */
+  const url = 'http://localhost:' + port;
+  if (process.platform === 'win32') {
+    try { cp.spawn('explorer.exe', [url], { detached: true, stdio: 'ignore' }).unref(); }
+    catch (e) { try { cp.exec('start "" "' + url + '"'); } catch (_) {} }
+  } else if (process.platform === 'darwin') {
+    try { cp.spawn('open', [url], { detached: true, stdio: 'ignore' }).unref(); } catch (e) {}
+  } else {
+    try { cp.spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref(); } catch (e) {}
+  }
+  console.log('🌐 已在默认浏览器打开 ' + url);
 }
 
 function stop() {
