@@ -18,12 +18,14 @@
   function inline(s) {
     s = escapeHTML(s);
     s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    /* 图片必须先于链接处理：链接正则也会命中 ![alt](url) 的 [alt](url) 部分，
+     * 若先替换链接会把图片语法破坏成「! + <a>」，图片永远渲染不出来 */
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) =>
+      '<img src="' + safeUrl(u.replace(/&amp;/g, '&')) + '" alt="' + alt + '" loading="lazy">');
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => {
       const href = safeUrl(u.replace(/&amp;/g, '&'));
       return '<a href="' + href + '"' + (/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : '') + '>' + t + '</a>';
     });
-    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) =>
-      '<img src="' + safeUrl(u.replace(/&amp;/g, '&')) + '" alt="' + alt + '" loading="lazy">');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');

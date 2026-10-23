@@ -1,6 +1,9 @@
 /* 夜神月博客 · 前台逻辑（零依赖，视图状态版） */
 (function () {
   'use strict';
+  /* Google Fonts 异步生效：print 样式表不阻塞渲染，这里换 media 让字体就位（CSP 禁内联 onload） */
+  const fontAsync = document.getElementById('fontAsync');
+  if (fontAsync) fontAsync.media = 'all';
   /* 图标用 currentColor，随主题自动适配（深色主题下浅色描边可见） */
   const ICONS = {
     chip: '<svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3"><rect x="10" y="10" width="28" height="28" rx="3"/><rect x="18" y="18" width="12" height="12" fill="currentColor"/><path d="M16 4v6M32 4v6M16 38v6M32 38v6M4 16h6M4 32h6M38 16h6M38 32h6"/></svg>',
@@ -15,6 +18,20 @@
   };
   const CARD_BG = ['bg-pink', 'bg-yellow', 'bg-blue', 'bg-lime', 'bg-orange', 'bg-purple'];
   const $ = (s, r = document) => r.querySelector(s);
+  /* 路由切换专用瞬时置顶：html 有 scroll-behavior:smooth，
+   * 直接 scrollTo(0,0) 会带着用户从页面底部平滑滚回顶部，动画横穿整页 */
+  function jumpTop() { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }
+  /* 区块瞬时定位：长距离平滑滚会被 reveal 的布局变化打断（实测停在原地），
+   * 过滤结果直接跳到目标更符合直觉；临时关掉 CSS smooth 保证行为确定 */
+  function jumpToSec(sel) {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const html = document.documentElement;
+    const prev = html.style.scrollBehavior;
+    html.style.scrollBehavior = 'auto';
+    el.scrollIntoView({ block: 'start' });
+    html.style.scrollBehavior = prev || '';
+  }
 
   /* ---- 难度等级 / 预计耗时 / 登神进度 ---- */
   const LEVELS = { 1: '入门', 2: '基础', 3: '进阶', 4: '高阶', 5: '大师' };
@@ -27,6 +44,9 @@
   const FOOT_KEY = 'ysy_footprints';
   const LIKE_KEY = 'ysy_liked_ids';
   const STAR_KEY = 'ysy_stars';
+  /* 预计阅读时长：列表接口的元数据带 readMin（服务端预计算）；
+   * 静态模式 / 文章全量数据没有 readMin 时回退到本地按正文估算 */
+  const readMinOf = (p) => p.readMin || readingTime(p.content);
   function getStars() {
     try { return new Set(JSON.parse(localStorage.getItem(STAR_KEY) || '[]')); } catch (e) { return new Set(); }
   }
@@ -126,7 +146,7 @@
       <span class="pick-badge">今日推荐</span>
       <h3>${escapeHtml(p.title)}</h3>
       <p>${escapeHtml(p.excerpt || '')}</p>
-      <span class="foot-meta"><span class="cat-chip">${escapeHtml(catName(p.category))}</span><span>Lv.${lv.lv} ${lv.name}</span><span>⏱ 约 ${readingTime(p.content)} 分钟</span></span>
+      <span class="foot-meta"><span class="cat-chip">${escapeHtml(catName(p.category))}</span><span>Lv.${lv.lv} ${lv.name}</span><span>⏱ 约 ${readMinOf(p)} 分钟</span></span>
       <span class="pick-go">去读 →</span></a>`;
     sec.hidden = false;
   }
@@ -135,7 +155,7 @@
   function renderHot() {
     const sec = $('#hot-sec'), el = $('#hotList');
     if (!sec || !el) return;
-    fetch('/api/likes').then((r) => r.json()).then((d) => {
+    fetch(window.IS_STATIC_BLOG ? 'data/likes.json' : '/api/likes').then((r) => r.json()).then((d) => {
       const likes = d.likes || {};
       const top = DATA.posts.slice().sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0)).slice(0, 5);
       const zero = top.every((p) => !(likes[p.id] > 0));
@@ -302,6 +322,18 @@
         ${ICONS[c.icon] || ICONS.chip}<h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.desc || '')}</p></a>`).join('');
     $('#tagcloud').innerHTML = s.tags.map((t, i) =>
       `<a class="${['t-s', 't-m', 't-l'][i % 3]}" href="#/tag/${encodeURIComponent(t)}">${escapeHtml(t)}</a>`).join('');
+    /* 友链网格：此前该区块从未被渲染，首页「友链」永远空白 */
+    const linksEl = $('#links');
+    if (linksEl) {
+      const friends = (s.friendLinks || []);
+      linksEl.innerHTML = friends.length ? friends.map((l, i) =>
+        `<a class="card cat ${CARD_BG[i % 6]} reveal" href="${escapeAttr(l.url || '#')}" target="_blank" rel="noopener">
+          <h3>${escapeHtml(l.name || '未命名小岛')}</h3><p>${escapeHtml(l.desc || '这只瓶子没写自我介绍')}</p></a>`).join('')
+        : '<p class="hint">还没有友链，去后台「站点设置」添加。</p>';
+    }
+    /* footer 统计文案跟随真实文章数（此前硬编码 96 lessons） */
+    const termExit = document.getElementById('termExit');
+    if (termExit) termExit.textContent = totalPosts + ' lessons';
     $('#ctaEmail').textContent = 'EMAIL';
     $('#ctaEmail').href = 'mailto:' + (s.contact.email || '');
     $('#ctaGithub').href = s.contact.github || '#';
@@ -314,11 +346,16 @@
     const bc = document.querySelector('.bottle-cta .bc-txt b');
     if (bc) bc.textContent = `海上有 ${(s.friendLinks || []).length} 只漂流瓶 →`;
     /* 导航分组：顶级 6 项（2 个下拉），不再把 10 个入口全堆在一行 */
-    const NAV_FLAT = [['#/', '首页'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/me', '主页']];
+    let NAV_FLAT = [['#/', '首页'], ['#/drive', '网盘'], ['#/gallery', '相册'], ['#/me', '主页']];
     const NAV_DROPS = [
       ['content', '内容', [['#cats', '📂 栏目'], ['#tags', '🏷 标签'], ['#/archive', '🗂 归档']]],
       ['fun', '互动', [['#/links', '🍾 漂流瓶'], ['#/wall', '📡 留言墙'], ['#/chat', '🎧 聊天室']]],
     ];
+    if (window.IS_STATIC_BLOG) {
+      /* 静态托管（GitHub Pages）：网盘/相册/聊天室依赖服务器，导航直接不露入口 */
+      NAV_FLAT = NAV_FLAT.filter(([h]) => h !== '#/drive' && h !== '#/gallery');
+      NAV_DROPS[1][2] = NAV_DROPS[1][2].filter(([h]) => h !== '#/chat');
+    }
     if (!window.IS_STATIC_BLOG) NAV_FLAT.push(['/admin', '后台']);
     else { const fa = document.getElementById('footAdmin'); if (fa) fa.remove(); }
     const navHtml =
@@ -368,8 +405,10 @@
     }
     if (window.Motion && window.Motion.ready) {
       window.Motion.heroIn();
-      window.Motion.tilt(document);
+      /* 卡片倾斜统一交给 fx.js 的 CSS 变量实现（与 :hover 位移组合生效），
+       * Motion.tilt 的 GSAP 内联 transform 会压住样式表导致双系统打架，这里不再绑定 */
       window.Motion.magnet(document);
+      window.Motion.velocitySkew(); /* 滚动速度微斜切（FXS 'skew' 开关） */
     }
   }
 
@@ -381,7 +420,7 @@
   };
   function postCard(p, feat) {
     const lv = levelInfo(p.level);
-    const rt = readingTime(p.content);
+    const rt = readMinOf(p);
     const isRead = getReadSet().has(p.id);
     const color = CAT_COLOR[p.category] || 'blue';
     return `<article class="card post ${feat ? 'feat' : ''} ${isRead ? 'is-read' : ''} reveal"
@@ -427,7 +466,11 @@
   }
   function bindSearch() {
     const si = $('#searchInput');
-    if (si) si.addEventListener('input', (e) => applySearch(e.target.value.trim().toLowerCase()));
+    /* 只绑一次：input 是静态元素，viewHome 每次回来都会走到这里，
+     * 叠加监听会让同一次按键触发 N 次 applySearch（老版本的输入卡顿根源） */
+    if (!si || si._searchBound) return;
+    si._searchBound = true;
+    si.addEventListener('input', (e) => applySearch(e.target.value.trim().toLowerCase()));
   }
 
   /* ---- 视图切换（显式状态，不依赖 DOM 探测） ---- */
@@ -496,7 +539,7 @@
         return '<div class="arch-group"><h3 class="arch-ym">' + y + ' 年 ' + parseInt(m, 10) + ' 月 <span class="hint">(' + groups[ym].length + ' 篇)</span></h3><ul class="arch-list">' + items + '</ul></div>';
       }).join('') + '</section>';
     if (window.Motion && window.Motion.ready) window.Motion.reveal(arch);
-    window.scrollTo(0, 0);
+    jumpTop();
   }
 
   /* ---- 资源网盘视图：目录树 + 文件列表 + 搜索 + 在线预览（访客可见可下载） ---- */
@@ -548,7 +591,7 @@
       }
     }
     renderDrive();
-    window.scrollTo(0, 0);
+    jumpTop();
   }
   /* 网盘解锁界面（终端风） */
   function renderDriveLocked(msg) {
@@ -871,7 +914,7 @@
       lb.querySelector('img').src = f.dataset.src;
       lb.hidden = false;
     }));
-    window.scrollTo(0, 0);
+    jumpTop();
     if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
   }
 
@@ -925,7 +968,7 @@
         if (f && f.url) window.open(f.url, '_blank', 'noopener');
       });
     });
-    window.scrollTo(0, 0);
+    jumpTop();
     if (window.SFX && window.SFX.enabled) window.SFX.whoosh();
   }
   function strHash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
@@ -1002,7 +1045,7 @@
         <span class="st-meta mono">${escapeHtml(n.name)} · ${d.getMonth() + 1}/${d.getDate()}</span>
       </div>`;
     }
-    fetch('/api/wall').then((r) => r.json()).then((d) => {
+    fetch(window.IS_STATIC_BLOG ? 'data/wall.json' : '/api/wall').then((r) => r.json()).then((d) => {
       const list = d.notes || [];
       $('#stickyGrid').innerHTML = list.map(noteHTML).join('')
         || '<p class="hint">墙上还空着，坐个第一张沙发？</p>';
@@ -1017,6 +1060,7 @@
       const text = $('#wallText').value.trim();
       const tip = $('#wallTip');
       if (!text) { tip.textContent = '先写点什么再发射～'; return; }
+      if (window.IS_STATIC_BLOG) { tip.textContent = '静态托管模式下留言暂停，欢迎到 GitHub 仓库的 issue 区找我 ✉'; return; }
       try { localStorage.setItem(WALL_NICK_KEY, nick.value.trim()); } catch (e) {}
       $('#wallSend').disabled = true;
       fetch('/api/wall', {
@@ -1036,16 +1080,30 @@
     }
     $('#wallSend').addEventListener('click', send);
     $('#wallText').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
-    window.scrollTo(0, 0);
+    jumpTop();
   }
 
   /* ============ 多人聊天室 #/chat ============ */
   const CHAT_SID_KEY = 'chatSid';
-  let chatTimer = null;
+  let chatTimer = null;      /* 2.2s 消息轮询 */
+  let chatPingTimer = null;  /* 15s 心跳 */
+  function stopChatTimers() {
+    if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
+    if (chatPingTimer) { clearInterval(chatPingTimer); chatPingTimer = null; }
+  }
   function viewChat() {
     const el = $('#chat');
     document.title = '深夜电台 · 多人聊天室';
     resetSeo();
+    if (window.IS_STATIC_BLOG) {
+      el.innerHTML = `<section class="sec wrap"><div class="chat-gate card">
+        <div class="sec-head"><span class="kicker">RADIO</span><h2>深夜电台 · 停播中</h2></div>
+        <p class="hint">聊天室需要服务器常驻，静态托管（GitHub Pages）模式下暂时打烊。想聊天可以去 GitHub 仓库的 issue 区喊我 ✉</p>
+      </div></section>`;
+      el.hidden = false;
+      jumpTop();
+      return;
+    }
     let sess = null;
     try { sess = JSON.parse(sessionStorage.getItem(CHAT_SID_KEY) || 'null'); } catch (e) {}
     el.hidden = false;
@@ -1076,7 +1134,7 @@
     };
     $('#chatEnter').addEventListener('click', send);
     $('#chatNick').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
-    window.scrollTo(0, 0);
+    jumpTop();
   }
   function renderChatRoom(el, sess) {
     let lastT = 0, firstLoad = true;
@@ -1119,6 +1177,8 @@
         || '<p class="hint">房间里只有你了…</p>';
     }
     function poll() {
+      /* 先判路由再发请求：切走后定时器尚未清理的几拍不再白发请求 */
+      if (location.hash !== '#/chat') return;
       fetch('/api/chat?since=' + lastT + '&hb=' + sess.id).then((r) => r.json()).then((d) => {
         if (location.hash !== '#/chat') return;
         const msgs = (firstLoad ? d.msgs.slice(-50) : d.msgs.filter((m) => m.t > lastT)) || [];
@@ -1135,7 +1195,11 @@
     }
     poll();
     chatTimer = setInterval(poll, 2200);
-    setInterval(() => { if (location.hash === '#/chat') fetch('/api/chat/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sess.id }) }).catch(() => {}); }, 15000);
+    /* 心跳单独记录，离开聊天室时随轮询一起清理（否则每次进房间泄漏一个 15s 定时器） */
+    chatPingTimer = setInterval(() => {
+      if (location.hash !== '#/chat') return;
+      fetch('/api/chat/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sess.id }) }).catch(() => {});
+    }, 15000);
     function sendMsg() {
       const inp = $('#chatText'), tip = $('#chatTip');
       const text = inp.value.trim();
@@ -1150,7 +1214,7 @@
     $('#chatSend').addEventListener('click', sendMsg);
     $('#chatText').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
     function leave() {
-      if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
+      stopChatTimers();
       try {
         navigator.sendBeacon && navigator.sendBeacon('/api/chat/leave',
           new Blob([JSON.stringify({ id: sess.id })], { type: 'application/json' }));
@@ -1159,7 +1223,7 @@
     }
     $('#chatExit').addEventListener('click', () => { leave(); location.hash = '#/'; });
     window.addEventListener('beforeunload', leave, { once: true });
-    window.scrollTo(0, 0);
+    jumpTop();
     setTimeout(() => { const i = $('#chatText'); if (i) i.focus(); }, 100);
   }
 
@@ -1171,31 +1235,31 @@
     const c = DATA.site.contact || {};
     const posts = DATA.posts || [];
     const skills = [
-      ['威胁狩猎', 92], ['红队渗透', 86], ['IoT 安全', 88], ['逆向分析', 74], ['应急响应', 80], ['安全开发', 70],
+      ['嵌入式开发', 85], ['ESP32 / ESP-IDF', 82], ['协议解析 MQTT·BLE', 78], ['Linux 与网络', 74], ['云边协同', 68], ['硬件焊接调试', 60],
     ];
     const timeline = [
-      ['NOW', '高级威胁狩猎工程师 · 女娲安全工作室', '盯着每一条异常遥测，把猎物揪出来。'],
-      ['PHASE-2', '红队方向持续修炼', '内网渗透 / 逻辑漏洞 / 权限维持，武器库持续进化。'],
-      ['PHASE-1', 'IoT 全栈修炼 ' + posts.length + ' 课', '从 ESP32 裸机到云端影子状态，一课一坑全记录。'],
-      ['ORIGIN', '「登神长阶」启动', '0 → 1，把学习过程本身做成作品。'],
+      ['NOW', 'IoT 全栈修炼中 · 已登 ' + posts.length + ' 级', '从点灯到上云，每一课都是亲手踩出来的坑。'],
+      ['PHASE-2', '云边协同与智能家居', 'MQTT Broker / Home Assistant / 边缘网关，把家里改成实验室。'],
+      ['PHASE-1', '嵌入式实战与协议拆解', 'ESP32 裸机、传感器驱动、报文逐字节拆开看。'],
+      ['ORIGIN', '「登神长阶」启动', '0 → 1，从焊第一块板子开始，把学习过程本身做成作品。'],
     ];
     const gear = [
-      ['🛰 主战线', '威胁狩猎 · 遥测分析 · 检测工程', '先于攻击者发现痕迹'],
-      ['🗡 武器库', '「悠然渗透武器库」', '197 tools / 10 categories · 持续整编'],
-      ['📡 博客矩阵', 'www.yyyrlovelsw.top', '主站 WordPress · 本站全栈自研'],
-      ['🤝 战术协同', '鹿鹿（电厂蓝队）', 'www.lulu.sec · 蓝红联动'],
-      ['🧠 修炼支线', '销控证 / 易经奇门 / 红队', '三线并行 · 融会贯通'],
-      ['☕ 燃料', '咖啡因 · 深夜', '「再抓一个就睡」'],
+      ['🛠 主战线', '嵌入式开发 · ESP32 / ESP-IDF', '让传感器开口说话，让板子听话'],
+      ['📡 协议栈', 'MQTT · CoAP · BLE · Modbus', '抓包逐字节拆，拆完写成课'],
+      ['☁️ 云与边', 'Broker · Home Assistant · 边缘网关', '设备到云端，一条消息的完整旅程'],
+      ['🧰 工作台', '烙铁 · 万用表 · 逻辑分析仪', '焊盘冒烟是日常，飞线是艺术'],
+      ['📚 修炼方式', '一课一坑全记录', '不装大佬，只把复杂的东西讲成人话'],
+      ['☕ 燃料', '咖啡因 · 深夜调板子', '「再调通一个就睡」'],
     ];
     const badges = [
-      ['🎯', '威胁狩猎'], ['🔴', '红队'], ['📡', 'IoT 安全'], ['🏗', '全栈自研'],
-      ['🧩', '逆向工程'], ['🛡', '蓝队视角'], ['✍️', posts.length + ' 篇输出'], ['⚡', '24/7 ON CALL'],
+      ['📡', 'IoT 修炼者'], ['⚡', 'ESP32'], ['📨', 'MQTT'], ['🔩', '嵌入式'],
+      ['☁️', '云边协同'], ['🏠', '智能家居'], ['✍️', posts.length + ' 篇输出'], ['🪜', '登神长阶中'],
     ];
     const stats = [
       [String(posts.length), '篇学习笔记'],
       [String((DATA.site.categories || []).length), '个专业方向'],
-      ['197', '件武器库藏兵'],
-      ['24/7', '狩猎在线'],
+      ['ESP32', '主力板卡'],
+      ['∞', '坑待踩'],
     ];
     const skillRows = skills.map((s, i) => `
       <div class="m-skill" style="--w:${s[1]}%;--dl:${i * 0.08}s"><span class="mono">${escapeHtml(s[0])}</span><i class="m-bar"><b></b></i><em class="mono">${s[1]}</em></div>`).join('');
@@ -1210,10 +1274,10 @@
       || '<p class="hint">项目档案整理中…</p>';
     el.innerHTML = `<section class="sec wrap">
       <header class="m-hero">
-        <span class="badge mono">// THREAT HUNTING ENGINEER</span>
+        <span class="badge mono">// IOT MAKER & LEARNER</span>
         <h1 class="m-name">夜神月<span class="m-name-en mono">KIRA · YAGAMI LIGHT</span></h1>
-        <p class="term-line" data-text="> whoami — hunting threats before they hunt you. status: ONLINE"></p>
-        <div class="m-seals mono"><span>女娲安全工作室</span><span>Threat Hunter</span><span>IoT × Security</span></div>
+        <p class="term-line" data-text="> whoami — maker, learner, tinkerer. soldering / flashing / publishing. status: ONLINE"></p>
+        <div class="m-seals mono"><span>物联网修炼者</span><span>IoT Maker</span><span>Embedded × Cloud</span></div>
       </header>
 
       <div class="m-stats">
@@ -1232,8 +1296,8 @@
       </div>
 
       <blockquote class="m-motto card">
-        <p>「世界上没有真正的黑暗，只有尚未被狩猎照亮的地方。」</p>
-        <cite class="mono">— 座右铭 / MOTTO v2.0</cite>
+        <p>「每一块点不亮的板子，都是登神长阶上的一级。」</p>
+        <cite class="mono">— 座右铭 / MOTTO v3.0</cite>
       </blockquote>
 
       <div class="m-grid">
@@ -1262,7 +1326,7 @@
       </div>
     </section>`;
     el.hidden = false;
-    window.scrollTo(0, 0);
+    jumpTop();
     if (window.Motion && window.Motion.ready) window.Motion.reveal(el);
     if (window.SFX && window.SFX.enabled) window.SFX.whoosh();
   }
@@ -1280,7 +1344,8 @@
     showList('栏目：' + c.name, list, false, { icon: c.icon, title: c.name, desc: c.desc, count: list.length });
     if (window.Motion && window.Motion.ready) window.Motion.reveal(document);
     else observeReveal();
-    $('#cats-sec').scrollIntoView({ behavior: 'smooth' });
+    /* 过滤结果渲染在文章区（含 listHead），定位到栏目区会看不到结果 */
+    jumpToSec('#posts-sec');
   }
   function viewTag(t) {
     const list = DATA.posts.filter((p) => (p.tags || []).includes(t));
@@ -1294,19 +1359,26 @@
     showList('标签：#' + t, list, false, { icon: 'wave', title: '#' + t, desc: '包含标签「' + t + '」的文章', count: list.length });
     if (window.Motion && window.Motion.ready) window.Motion.reveal(document);
     else observeReveal();
-    $('#posts-sec').scrollIntoView({ behavior: 'smooth' });
+    jumpToSec('#posts-sec');
   }
-  function viewArticle(id) {
+  async function viewArticle(id) {
     /* 支持 id 与 slug 两种寻址：优先精确匹配 id，其次 slug（便于用语义化链接分享） */
     const key = decodeURIComponent(id || '');
-    const p = DATA.posts.find((x) => x.id === key) || DATA.posts.find((x) => x.slug === key);
-    if (!p) { location.hash = '#/'; return; }
+    const meta = DATA.posts.find((x) => x.id === key) || DATA.posts.find((x) => x.slug === key);
+    if (!meta) { location.hash = '#/'; return; }
+    /* 列表接口不含正文：单独拉全量（含 content）；失败时降级用元数据（无正文仅提示） */
+    let p = meta;
+    try {
+      const r = await fetch('/api/post/' + encodeURIComponent(meta.id));
+      if (r.ok) { const j = await r.json(); if (j.post) p = j.post; }
+    } catch (e) {}
     const lv = levelInfo(p.level);
     const rt = readingTime(p.content);
     const words = (p.content || '').replace(/\s/g, '').length;
     const rel = DATA.posts.filter((x) => x.id !== p.id && (x.category === p.category || (x.tags || []).some((t) => (p.tags || []).includes(t)))).slice(0, 3);
     const relHtml = rel.length ? `<section class="rel"><h3>相关文章</h3><div class="posts">${rel.map((x) => postCard(x, false)).join('')}</div></section>` : '';
-    const idx = DATA.posts.indexOf(p);
+    /* 列表与全量是两个对象，按 id 回列表里定位序号（indexOf 全量对象会 -1，翻页全断） */
+    const idx = DATA.posts.findIndex((x) => x.id === meta.id);
     const prevPost = DATA.posts[idx - 1], nextPost = DATA.posts[idx + 1];
     const pnHtml = `<nav class="pn-nav">
       ${prevPost ? `<a class="btn ghost" href="#/post/${prevPost.id}">← 上一课</a>` : '<span></span>'}
@@ -1351,7 +1423,7 @@
     if ($('#readbar')) $('#readbar').hidden = false;
     document.title = p.title + ' · 夜神月博客';
     applySeo(p);
-    window.scrollTo(0, 0);
+    jumpTop();
     if (window.Motion && window.Motion.ready) {
       window.Motion.swapIn($('#reader'));
       window.Motion.readerIn();
@@ -1384,13 +1456,27 @@
     };
     const loadLikes = () => {
       if (likeCache) return Promise.resolve(likeCache);
-      return fetch('/api/likes').then((r) => r.json())
+      return fetch(window.IS_STATIC_BLOG ? 'data/likes.json' : '/api/likes').then((r) => r.json())
         .then((d) => { likeCache = d.likes || {}; return likeCache; })
         .catch(() => ({}));
     };
     loadLikes().then(paintLike);
     if (likeBtn) likeBtn.addEventListener('click', () => {
       if (isLiked(p.id)) return;
+      if (window.IS_STATIC_BLOG) {
+        /* 静态托管：无写接口，本地计数 +1 过过瘾 */
+        likeCache = likeCache || {};
+        likeCache[p.id] = (likeCache[p.id] || 0) + 1;
+        try {
+          const arr = JSON.parse(localStorage.getItem(LIKE_KEY) || '[]');
+          if (arr.indexOf(p.id) < 0) arr.push(p.id);
+          localStorage.setItem(LIKE_KEY, JSON.stringify(arr));
+        } catch (e) {}
+        paintLike();
+        likeBtn.classList.add('pop');
+        setTimeout(() => likeBtn.classList.remove('pop'), 400);
+        return;
+      }
       fetch('/api/like', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
         .then((r) => r.json()).then((d) => {
           try {
@@ -1430,13 +1516,20 @@
       listEl.innerHTML = items.map((c) =>
         `<div class="cmt-item"><div class="cmt-head"><b>${escapeHtml(c.name)}</b><span class="mono">${fmtT(c.t)}</span></div><p>${escapeHtml(c.text)}</p></div>`).join('');
     };
-    fetch('/api/comments?post=' + encodeURIComponent(p.id)).then((r) => r.json())
-      .then((d) => renderCmts(d.comments || []))
-      .catch(() => { if (listEl) listEl.innerHTML = '<p class="cmt-empty">留言加载失败，稍后刷新再试</p>'; });
+    const loadCmts = () => {
+      if (window.IS_STATIC_BLOG) {
+        /* 静态托管：读打包快照（按文章 id 分组），只读 */
+        if (!loadCmts._cache) loadCmts._cache = fetch('data/comments.json').then((r) => r.json()).catch(() => ({}));
+        return loadCmts._cache.then((m) => m[p.id] || []);
+      }
+      return fetch('/api/comments?post=' + encodeURIComponent(p.id)).then((r) => r.json()).then((d) => d.comments || []);
+    };
+    loadCmts().then(renderCmts).catch(() => { if (listEl) listEl.innerHTML = '<p class="cmt-empty">留言加载失败，稍后刷新再试</p>'; });
     const send = $('#cmtSend');
     if (send) send.addEventListener('click', () => {
       const text = $('#cmtText').value.trim();
       if (!text) { if (tipEl) tipEl.textContent = '先写点什么吧'; return; }
+      if (window.IS_STATIC_BLOG) { if (tipEl) tipEl.textContent = '静态托管模式下留言暂停，欢迎到 GitHub 仓库的 issue 区找我 ✉'; return; }
       fetch('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post: p.id, name: $('#cmtName').value, text }) })
         .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || '发送失败'); return d; })
@@ -1558,7 +1651,7 @@
     upsertMeta('property', 'og:description', s.slogan || '');
     upsertMeta('property', 'og:type', 'website');
     upsertMeta('name', 'description',
-      `${s.slogan || ''} ${DATA.posts.length} 节小白向课程，8 个专业方向。`.trim());
+      `${s.slogan || ''} ${DATA.posts.length} 节小白向课程，${(s.categories || []).length} 个专业方向。`.trim());
     const ld = document.getElementById('ld-json');
     if (ld) ld.remove();
   }
@@ -1573,7 +1666,7 @@
       push({ kind: '动作', icon: '🗄', title: '打开资源网盘', run: () => { location.hash = '#/drive'; } });
       push({ kind: '动作', icon: '🖼', title: '打开照片墙', run: () => { location.hash = '#/gallery'; } });
       push({ kind: '动作', icon: '🕶', title: '查看个人主页', run: () => { location.hash = '#/me'; } });
-      push({ kind: '动作', icon: '⚙️', title: '特效中心（开关全部特效）', run: () => { const p = $('#fxPanel'); if (p) { p.hidden = false; } } });
+      push({ kind: '动作', icon: '⚙️', title: '特效中心（开关全部特效）', run: () => { /* 面板内容由 fxcenter 惰性构建，直接走按钮的打开路径才不会开出空面板 */ const b = document.getElementById('fxBtn'); if (b) b.click(); } });
       push({ kind: '动作', icon: '🌓', title: '切换深浅主题', run: toggleTheme });
       push({ kind: '动作', icon: '⌨', title: '查看键盘快捷键', run: openKbdHelp });
       DATA.site.categories.forEach((c) =>
@@ -1670,10 +1763,15 @@
   const VIEW_IDS = ['home', 'reader', 'archive', 'drive', 'gallery', 'me', 'linksPage', 'wall', 'chat'];
   function route() {
     if (window.Motion && window.Motion.ready) window.Motion.killAll();
+    /* 离开聊天室：轮询/心跳随路由清理（直接点导航不点「退出」也要停表） */
+    if ((location.hash || '#/') !== '#/chat') stopChatTimers();
+    if (window.Motion && window.Motion.ready) window.Motion.wipe();
     /* 统一清扫全部视图容器，再由具体视图自行点亮自己 */
     VIEW_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = true; });
     const h = location.hash || '#/';
     setNavActive(h);
+    /* 静态托管下，直接输入网盘/相册地址的访客引导回首页（这两个页面依赖服务器 API） */
+    if (window.IS_STATIC_BLOG && (h.startsWith('#/drive') || h.startsWith('#/gallery'))) { location.replace('#/'); return; }
     if (h.startsWith('#/post/')) viewArticle(h.split('/')[2]);
     else if (h.startsWith('#/cat/')) viewCat(h.split('/')[2]);
     else if (h.startsWith('#/tag/')) viewTag(decodeURIComponent(h.split('/')[2]));
@@ -1727,7 +1825,7 @@
     $('#themeBtn').addEventListener('click', toggleTheme);
     try {
       let r = await fetch('/api/site').catch(() => null);
-      if (!r || !r.ok) { r = await fetch('/data/site.json'); window.IS_STATIC_BLOG = true; }
+      if (!r || !r.ok) { r = await fetch('data/site.json'); window.IS_STATIC_BLOG = true; } /* 相对路径：兼容 GitHub Pages 子路径托管 */
       if (!r || !r.ok) throw new Error('no site data');
       DATA = await r.json();
     } catch (e) {

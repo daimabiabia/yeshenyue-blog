@@ -226,7 +226,9 @@ p:last-child { margin-bottom: 0; }
   will-change: transform;
 }
 .card:hover {
-  transform: translate(-3px, -3px);
+  /* hover 位移与卡片倾斜变量组合：单独写 translate 会以更高优先级
+   * 覆盖掉 tilt 写入的 rotateX/rotateY 变量，导致悬停时倾斜失效 */
+  transform: translate(-3px, -3px) perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) scale(var(--ts, 1));
   box-shadow: var(--sh-lg);
 }
 /* 按下反馈 */
@@ -1301,7 +1303,10 @@ p:last-child { margin-bottom: 0; }
   border-radius: var(--radius); box-shadow: var(--sh-md); cursor: pointer;
   transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
-.foot-card:hover { transform: translate(-2px, -2px); box-shadow: var(--sh-lg); }
+.foot-card:hover {
+  transform: translate(-2px, -2px) perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) scale(var(--ts, 1));
+  box-shadow: var(--sh-lg);
+}
 .foot-card .foot-icon {
   flex: 0 0 auto; width: 46px; height: 46px; display: grid; place-items: center;
   background: var(--yellow); border: var(--bw-hair) solid var(--line); border-radius: var(--radius-sm);
@@ -1435,7 +1440,7 @@ p:last-child { margin-bottom: 0; }
 
 /* ---- 成就 Toast（右下角） ---- */
 #toast-box {
-  position: fixed; right: 18px; bottom: 18px; z-index: calc(var(--z-lb) + 20);
+  position: fixed; right: 18px; bottom: 84px; z-index: calc(var(--z-lb) + 20);
   display: grid; gap: 10px; pointer-events: none;
 }
 .ach-toast {
@@ -1459,10 +1464,10 @@ p:last-child { margin-bottom: 0; }
 .ach-toast .at-body b { font-size: 14px; }
 .ach-toast .at-body i { font-style: normal; font-size: 12.5px; color: var(--ink-2); }
 
-/* ---- 卡片 3D 倾斜 + 光泽跟随（fx.tilt 写入 --tx/--ty/--gx/--gy） ---- */
+/* ---- 卡片 3D 倾斜 + 光泽跟随（fx.tilt 写入 --tx/--ty/--gx/--gy/--ts） ---- */
 .post, .cat, .foot-card, .cta {
-  transform: perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
-  transition: transform .18s var(--ease-out, ease-out), box-shadow var(--t-fast) var(--ease);
+  transform: perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) scale(var(--ts, 1));
+  transition: transform .18s ease-out, box-shadow var(--t-fast) var(--ease);
   will-change: transform;
   position: relative;
 }
@@ -2331,3 +2336,63 @@ p:last-child { margin-bottom: 0; }
 .m-card-dark .m-badge,
 .m-card-dark .m-proj { color: var(--ink); }
 .m-card-dark .m-proj .mono { color: var(--ink-2); }
+
+/* ============================================================
+   28. 高级特效层：惯性光标 / Hero 网络拓扑 / 路由转场
+   ============================================================ */
+
+/* -- 28.1 自定义光标（cursor.js）：粉点直随 + 墨环惯性跟随 -- */
+#cursor-ring, #cursor-dot {
+  position: fixed; left: 0; top: 0;
+  pointer-events: none;
+  z-index: 2147483100; /* 高于 fx-canvas，贴着真实指针走 */
+  will-change: transform;
+}
+#cursor-ring {
+  width: 34px; height: 34px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  opacity: .55;
+  transition: opacity .25s ease, border-color .2s ease, background-color .2s ease;
+}
+#cursor-ring:hover-over { border-color: var(--pink); background: color-mix(in srgb, var(--pink) 12%, transparent); }
+#cursor-ring.press { border-color: var(--pink); background: color-mix(in srgb, var(--pink) 18%, transparent); }
+#cursor-dot {
+  width: 6px; height: 6px;
+  background: var(--pink);
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  opacity: .9;
+}
+/* 悬停可交互元素时环放大由 JS transform 负责；这里只管显隐与配色 */
+
+/* -- 28.2 Hero 网络拓扑画布（netgraph.js） -- */
+#netgraph {
+  position: absolute; inset: 0;
+  z-index: 0;              /* .hero > * 默认 position:relative，id 选择器压住 */
+  pointer-events: none;    /* 不挡点击；鼠标事件由 hero 容器转发 */
+}
+
+/* -- 28.3 路由切换转场：竖向墨条从左扫到右（motion.wipe） -- */
+#route-wipe {
+  position: fixed; inset: 0;
+  z-index: calc(var(--z-lb) + 30);
+  pointer-events: none;
+  background: var(--ink);
+  visibility: hidden;      /* 由 GSAP autoAlpha 接管显隐 */
+  transform: scaleX(0);
+}
+#route-wipe::after {       /* 扫描线前缘一道主题色霓虹 */
+  content: '';
+  position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
+  background: linear-gradient(90deg, var(--pink), var(--yellow));
+}
+
+/* -- 28.4 降级与打印 -- */
+@media (prefers-reduced-motion: reduce) {
+  #cursor-ring, #cursor-dot, #netgraph, #route-wipe { display: none !important; }
+}
+@media print {
+  #cursor-ring, #cursor-dot, #netgraph, #route-wipe { display: none !important; }
+}

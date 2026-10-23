@@ -163,6 +163,54 @@
     });
   }
 
+  /* ---- 2.55) 按钮涟漪：点按钮/链接时从点击点扩散一圈主题色方环（画布绘制，零 DOM） ---- */
+  function inkColor() {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+      return v || '#0A0A0A';
+    } catch (e) { return '#0A0A0A'; }
+  }
+  var RIPPLE_SEL = '.btn, .dice-btn, .kbd-hint-btn, .theme-toggle, .nav-drop-btn, button, a';
+  function ripple(x, y, color, grow) {
+    spawn({
+      x: x, y: y, vx: 0, vy: 0,
+      rot: 0, vr: 0, r0: 4, rGrow: grow || 44,
+      size: 2.5, shape: 'ring',
+      color: color || inkColor(),
+      life: 360, max: 360, fade: 'none', shrink: false
+    });
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (!FXS.get('ripple')) return;
+    var t = e.target && e.target.closest ? e.target.closest(RIPPLE_SEL) : null;
+    if (!t) return;
+    var r = t.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    ripple(e.clientX, e.clientY, null, Math.max(r.width, r.height) * 0.85);
+  }, { passive: true });
+
+  /* ---- 2.56) 文字乱码解码：悬停区块眉标时打出黑客式解码动画 ---- */
+  var SCRAMBLE_CHARS = '#<>/*+=~01▓▒░';
+  function scramble(el) {
+    if (el._scr) return;
+    var orig = el.textContent;
+    el._scr = true;
+    var i = 0;
+    var t = setInterval(function () {
+      i++;
+      var reveal = Math.floor(i * 1.7);
+      var out = orig.slice(0, reveal);
+      for (var k = reveal; k < orig.length; k++) out += SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+      el.textContent = out;
+      if (reveal >= orig.length) { clearInterval(t); el.textContent = orig; el._scr = false; }
+    }, 26);
+  }
+  document.addEventListener('mouseover', function (e) {
+    if (isTouchDev || !FXS.get('scramble')) return;
+    var k = e.target && e.target.closest ? e.target.closest('.kicker') : null;
+    if (k && k.textContent) scramble(k);
+  }, { passive: true });
+
   /* ---- 2.6) 超级爆炸（长按蓄力释放）：60 粒 + 双冲击波 ---- */
   function megaBurst(x, y) {
     if (!FXS.get('mega')) { fxEvent('fx:mega', { x: x, y: y }); return; }
@@ -301,11 +349,13 @@
       card.style.setProperty('--ty', (px * 9).toFixed(2) + 'deg');
       card.style.setProperty('--gx', ((px + 0.5) * 100).toFixed(1) + '%');
       card.style.setProperty('--gy', ((py + 0.5) * 100).toFixed(1) + '%');
+      card.style.setProperty('--ts', '1.02');
       if (!card._tiltBound) {
         card._tiltBound = true;
         card.addEventListener('mouseleave', function () {
           card.style.setProperty('--tx', '0deg');
           card.style.setProperty('--ty', '0deg');
+          card.style.setProperty('--ts', '1');
         });
       }
     }, { passive: true });
@@ -315,11 +365,13 @@
   window.FX = {
     ready: true,
     canvas: cv,
-    version: 2,
+    version: 3,
     stats: function () { return { particles: parts.length, running: running }; },
     burst: burst,
     megaBurst: megaBurst,
     shockwave: shockwave,
+    ripple: ripple,
+    scramble: scramble,
     candyRain: candyRain,
     trail: trail,
     rainbow: rainbow,

@@ -81,7 +81,10 @@
         });
         if (tiltCards.length) gsap.to(tiltCards, {
           autoAlpha: 1, y: 0, rotation: 0, stagger: 0.09, duration: 0.65,
-          ease: 'back.out(1.5)', overwrite: true
+          ease: 'back.out(1.5)', overwrite: true,
+          /* 清掉内联 transform：卡片倾斜已统一由 fx.js 写 CSS 变量，
+           * 内联 transform 留着会压住样式表的 perspective/rotateX(Y) 让倾斜失效 */
+          clearProps: 'transform'
         });
       }
     });
@@ -371,14 +374,94 @@
     }
   }
 
+  /* ---- 路由切换扫描线转场：一条竖向墨条扫过屏幕（wipe 关闭时静默跳过） ---- */
+  function wipe() {
+    if (REDUCE) return;
+    try { if (window.FXS && !FXS.get('wipe')) return; } catch (e) {}
+    let ov = document.getElementById('route-wipe');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'route-wipe';
+      ov.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(ov);
+    }
+    gsap.timeline({ overwrite: true })
+      .set(ov, { scaleX: 0, transformOrigin: '0% 50%', autoAlpha: 1 })
+      .to(ov, { scaleX: 1, duration: 0.2, ease: 'power2.in' })
+      .set(ov, { transformOrigin: '100% 50%' })
+      .to(ov, { scaleX: 0, duration: 0.3, ease: 'power3.out' })
+      .set(ov, { autoAlpha: 0 });
+    /* 兜底：rAF 被挂起（页面隐藏 / 截图冻结）时 tween 会停在中途，
+     * 遮罩一旦卡在半开就永久糊屏。setTimeout 不走 rAF，700ms 后无条件归位 */
+    setTimeout(function () { gsap.set(ov, { autoAlpha: 0, scaleX: 0 }); }, 700);
+  }
+
+  /* ---- 滚动速度斜切：快速滚动时内容轻微倾斜，停止后回弹（skew 开关，#app 一次性绑定） ---- */
+  function velocitySkew() {
+    if (REDUCE) return;
+    const app = document.getElementById('app');
+    if (!app || app.dataset.skewFx) return;
+    app.dataset.skewFx = '1';
+    app.style.willChange = 'transform';
+    const skewTo = gsap.quickTo(app, 'skewY', { duration: 0.55, ease: 'power3' });
+    let last = window.scrollY;
+    gsap.ticker.add(() => {
+      let on = true;
+      try { on = !window.FXS || FXS.get('skew'); } catch (e) {}
+      if (!on) { skewTo(0); last = window.scrollY; return; }
+      const y = window.scrollY;
+      const v = gsap.utils.clamp(-1.4, 1.4, (y - last) * 0.16);
+      last = y;
+      skewTo(v);
+    });
+  }
+
   /* ---- 字体加载后重算触发位置 ---- */
   if (ST && document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => ST.refresh()).catch(() => {});
   }
+  /* 页面完全加载（图片/字体 settle）后再刷新一次触发器位置，防布局漂移导致 onEnter 永不命中 */
+  if (ST) window.addEventListener('load', () => ST.refresh(), { once: true });
+
+  /* ---- 兜底看门狗：动效绝不能扣住内容 ----
+   * 场景：触发器位置漂移、第三方脚本干扰、rAF 节流等导致 onEnter 没命中，
+   * 元素就永远停在 opacity:0 / clip 隐藏（用户看到的「文章下半页空白」）。
+   * 覆盖全站所有进场前隐藏的元素：文章正文块 / reveal 卡片 / 标签云 /
+   * 路线图层级与课程 chips / 区块标题 kicker+h2 / 正文图片揭示。
+   * 规则：已在视口内、仍隐藏、且没有正在播放的补间 → 600ms 内强制显示。
+   * 守卫用 isActive()：gsap.from+scrollTrigger 的等待态补间不算「在跑」，
+   * 否则触发器失灵时看门狗会被假象永远拦住。 */
+  (function installFailsafe() {
+    if (REDUCE) return;
+    const SEL = [
+      '.md > *', '.reveal', '.tagcloud a',
+      '#roadmap .rung', '#roadmap .rchip',
+      '.sec-head .kicker', '.sec-head h2',
+      '.md img',
+    ].join(',');
+    setInterval(() => {
+      document.querySelectorAll(SEL).forEach((el) => {
+        if (el.dataset.mfFail === '1') return;
+        const r = el.getBoundingClientRect();
+        if (r.top >= window.innerHeight || r.bottom <= 0) return; /* 不在视口，该藏就藏 */
+        const cs = getComputedStyle(el);
+        const hidden = parseFloat(cs.opacity) < 0.05 || cs.visibility === 'hidden';
+        const clipped = /inset\([^)]*100%/.test(cs.clipPath || '');
+        if (!hidden && !clipped) return;
+        if (gsap.getTweensOf(el).some((t) => t.isActive())) return; /* 正在进场，别抢 */
+        el.dataset.mfFail = '1';
+        gsap.to(el, {
+          autoAlpha: 1, y: 0, rotation: 0, clipPath: 'inset(0% 0% 0% 0%)',
+          duration: 0.3, overwrite: true,
+          clearProps: 'transform,opacity,visibility,clip-path',
+        });
+      });
+    }, 600);
+  })();
 
   window.Motion = {
     ready: true, heroIn, reveal, readerIn, progressIn, swapIn, killAll,
     tilt, pop, typeLine, roadmapIn, readProgress, tocHighlight, secFx,
-    magnet, charFx, imgReveal,
+    magnet, charFx, imgReveal, wipe, velocitySkew,
   };
 })();

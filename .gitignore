@@ -16,3 +16,4 @@ data/auth.json.bak-*
 .paused
 server.pid
 server.log
+.workbuddy/

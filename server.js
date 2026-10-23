@@ -15,6 +15,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 /* ============ 路径与常量 ============ */
 const ROOT = __dirname;
@@ -37,6 +38,19 @@ const MAX_DRIVE_UPLOAD = 30 * 1024 * 1024; // 网盘单文件上限 30MB
 
 /* ============ 工具 ============ */
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+/* ---- 真实访客 IP：走 cloudflared 隧道 / Render 等反代时 remoteAddress 恒为 127.0.0.1，
+ * 导致 UV 统计全是同一个值、IP 拉黑误伤本机。设环境变量 TRUST_PROXY=1（Render 上默认生效）
+ * 后信任 x-forwarded-for 首段；本地直连不受影响。 ---- */
+const TRUST_PROXY = process.env.TRUST_PROXY === '1' || !!process.env.RENDER;
+function realIP(req) {
+  if (TRUST_PROXY) {
+    const xf = String(req.headers['x-forwarded-for'] || '');
+    const first = xf.split(',')[0].trim();
+    if (first) return first;
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
 
 /* ---- 访客互动数据（点赞 / 留言）持久化 ---- */
 function loadJSON(file, dflt) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return dflt; } }
@@ -77,18 +91,39 @@ const VISITS_FILE = path.join(DATA_DIR, 'visits.json');
 let visits = loadJSON(VISITS_FILE, null);
 if (!visits || typeof visits !== 'object') visits = { total: 0, days: {}, uips: [], recent: [] };
 function saveVisits() { saveJSON(VISITS_FILE, visits); }
+/* 写入节流：访问日志每请求都会变，直接每请求同步写盘太浪费；
+ * 改为标脏 + 最多 5 秒落盘一次，退出时冲刷兜底。 */
+let visitsDirty = false;
+let visitsFlushTimer = null;
+function scheduleVisitsSave() {
+  visitsDirty = true;
+  if (visitsFlushTimer) return;
+  visitsFlushTimer = setTimeout(() => {
+    visitsFlushTimer = null;
+    if (visitsDirty) { visitsDirty = false; saveVisits(); }
+  }, 5000);
+  if (visitsFlushTimer.unref) visitsFlushTimer.unref();
+}
+function flushVisits() {
+  if (visitsFlushTimer) { clearTimeout(visitsFlushTimer); visitsFlushTimer = null; }
+  if (visitsDirty) { visitsDirty = false; saveVisits(); }
+}
 function noteVisit(ip, pathname) {
   if (/\.(css|js|png|jpg|jpeg|webp|gif|ico|svg|woff2?)$/i.test(pathname)) return; // 静态资源不计
+  /* 轮询/高频接口不计 PV：聊天室每 2.2s 轮询一次、点赞每页各拉一次、网盘轮询与下载，
+   * 计入会把 PV 严重灌水（挂一晚上聊天室 = 上万假 PV） */
+  if (/^\/api\/(chat|likes|comments|drive)(\/|$)/.test(pathname)) return;
   visits.total += 1;
   const day = new Date().toISOString().slice(0, 10);
   visits.days[day] = (visits.days[day] || 0) + 1;
   if (!visits.uips.includes(ip)) { visits.uips.push(ip); if (visits.uips.length > 5000) visits.uips = visits.uips.slice(-5000); }
   visits.recent.unshift({ ip, path: pathname, t: Date.now() });
   if (visits.recent.length > 300) visits.recent.length = 300;
-  saveVisits();
+  scheduleVisitsSave();
 }
 let comments = loadJSON(COMMENT_FILE, []);
 const lastCommentAt = new Map(); /* ip -> 上次留言时间戳，留言冷却用 */
+const lastLikeAt = new Map();    /* ip -> 上次点赞时间戳，点赞冷却用 */
 
 /* ---- 留言墙（便利贴）与聊天室存储 ---- */
 const WALL_FILE = path.join(DATA_DIR, 'wall.json');
@@ -99,6 +134,7 @@ let chat = loadJSON(CHAT_FILE, { msgs: [], online: [] });
 if (!Array.isArray(chat.msgs)) chat.msgs = [];
 if (!Array.isArray(chat.online)) chat.online = [];
 const lastChatAt = new Map(); /* 聊天发送冷却 */
+const lastJoinAt = new Map(); /* ip -> 上次 join 时间戳，加入冷却 */
 function saveChat() { saveJSON(CHAT_FILE, chat); }
 /* 在线名单 GC：45s 心跳超时即移除 */
 function pruneOnline() {
@@ -110,10 +146,20 @@ function pruneOnline() {
 
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, Object.assign({
+  const headers = Object.assign({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-  }, SEC_HEADERS));
+  }, SEC_HEADERS);
+  /* gzip 协商：JSON 压缩率高（正文大 JSON 约 4~5 倍），>1KB 且客户端支持即压缩。
+   * res.req 由 http 模块自动挂载，无需改动各调用点。 */
+  const ae = String((res.req && res.req.headers['accept-encoding']) || '');
+  if (body.length > 1024 && /\bgzip\b/.test(ae)) {
+    headers['Content-Encoding'] = 'gzip';
+    headers.Vary = 'Accept-Encoding';
+    res.writeHead(code, headers);
+    return res.end(zlib.gzipSync(body));
+  }
+  res.writeHead(code, headers);
   res.end(body);
 }
 
@@ -121,19 +167,32 @@ function readBody(req, cap) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    let tooBig = false;
+    let done = false;
     const limit = cap || MAX_BODY;
     req.on('data', (c) => {
+      if (done) return;
       size += c.length;
-      if (size > limit) { tooBig = true; req.destroy(); return; }
+      if (size > limit) {
+        /* 超限：Node 在请求体未接收完时就结束响应会直接 RST 连接，
+         * 客户端只看得到 ECONNRESET 拿不到 413。
+         * 因此先把剩余请求体排空（resume 进 flowing 模式丢弃），
+         * 收完或 8 秒兜底超时后再拒绝，主 catch 回 413。 */
+        done = true;
+        req.resume();
+        req.on('end', () => reject(new Error('请求体过大')));
+        const t = setTimeout(() => { try { req.destroy(); } catch (_) {} reject(new Error('请求体过大')); }, 8000);
+        if (t.unref) t.unref();
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => {
-      if (tooBig) return reject(new Error('请求体过大'));
+      if (done) return;
+      done = true;
       try { resolve(Buffer.concat(chunks).toString('utf8') ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
       catch (e) { reject(new Error('请求体不是合法 JSON')); }
     });
-    req.on('error', reject);
+    req.on('error', (e) => { if (!done) { done = true; reject(e); } });
   });
 }
 
@@ -160,21 +219,62 @@ const SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  /* font-src 需放行 fonts.gstatic.com、style-src 放行 fonts.googleapis.com，
+   * 否则 Google Fonts 的 woff2 会被 CSP 静默拦截，全站退化为系统字体。 */
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
 };
 
-function sendFile(res, filePath) {
+/* 静态文件 ETag 缓存：内容不变时命中 If-None-Match 直接 304，省带宽也省解析 */
+const etagCache = new Map(); // filePath -> { mtimeMs, size, etag }
+function etagOf(filePath, buf) {
+  let st;
+  try { st = fs.statSync(filePath); } catch (e) { return ''; }
+  const hit = etagCache.get(filePath);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.etag;
+  const etag = '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
+  if (etagCache.size > 500) etagCache.clear();
+  etagCache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, etag });
+  return etag;
+}
+
+/* 可压缩的静态类型：文本类收益大，图片/字体本身已压缩不重复处理 */
+const GZIP_MIME = new Set(['text/html', 'text/css', 'application/javascript', 'application/json', 'image/svg+xml']);
+
+function sendFile(req, res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
+  const headOnly = req && req.method === 'HEAD';
   fs.readFile(filePath, (err, buf) => {
     if (err) {
       res.writeHead(404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
       res.end('Not Found');
       return;
     }
-    res.writeHead(200, Object.assign({
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-    }, SEC_HEADERS));
+    const etag = etagOf(filePath, buf);
+    const base = { ETag: etag || undefined };
+    if (etag && req && req.headers['if-none-match'] === etag) {
+      res.writeHead(304, Object.assign(base, SEC_HEADERS));
+      return res.end();
+    }
+    const ctype = MIME[ext] || 'application/octet-stream';
+    const h = Object.assign({
+      'Content-Type': ctype,
+      /* HTML 走协商缓存保证发版即生效；css/js/img 内容不变可直接用本地副本（有 ETag 兜底） */
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400',
+      Vary: 'Accept-Encoding',
+    }, base);
+    /* gzip 协商（HEAD 不发体） */
+    const ae = String((req && req.headers['accept-encoding']) || '');
+    if (!headOnly && buf.length > 1024 && GZIP_MIME.has(String(ctype).split(';')[0]) && /\bgzip\b/.test(ae)) {
+      h['Content-Encoding'] = 'gzip';
+      res.writeHead(200, Object.assign(h, SEC_HEADERS));
+      return res.end(zlib.gzipSync(buf));
+    }
+    if (headOnly) {
+      h['Content-Length'] = buf.length; // HEAD 只给头不给体
+      res.writeHead(200, Object.assign(h, SEC_HEADERS));
+      return res.end();
+    }
+    res.writeHead(200, Object.assign(h, SEC_HEADERS));
     res.end(buf);
   });
 }
@@ -275,6 +375,11 @@ function detectImageExt(buf) {
 }
 
 /* ============ 认证 ============ */
+/* 密码哈希：scrypt（内存难解，抗 GPU 爆破）。
+ * 旧记录（algo 缺失 = sha256(pass+salt)）在下次成功登录时自动迁移到 scrypt。 */
+function hashPassword(pass, salt) {
+  return crypto.scryptSync(String(pass), salt, 32).toString('hex');
+}
 let auth = loadAuth();
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 会话 24 小时过期
 const sessions = new Map(); // token -> { exp, kind: 'admin'|'drive' }（内存会话，重启后需重新登录/解锁）
@@ -283,9 +388,9 @@ const sessions = new Map(); // token -> { exp, kind: 'admin'|'drive' }（内存�
 const DRIVE_LOCK_FILE = path.join(DATA_DIR, 'drive-lock.json');
 function loadDriveLock() {
   if (!fs.existsSync(DRIVE_LOCK_FILE)) {
-    const salt = crypto.randomBytes(8).toString('hex');
+    const salt = crypto.randomBytes(16).toString('hex');
     const pass = process.env.DRIVE_PASS || 'iot-2026'; // 可用环境变量设定初始口令
-    const rec = { salt, hash: sha256(pass + salt) };
+    const rec = { algo: 'scrypt', salt, hash: hashPassword(pass, salt) };
     fs.writeFileSync(DRIVE_LOCK_FILE, JSON.stringify(rec, null, 2));
     return rec;
   }
@@ -293,6 +398,18 @@ function loadDriveLock() {
 }
 let driveLock = loadDriveLock();
 function saveDriveLock() { fs.writeFileSync(DRIVE_LOCK_FILE, JSON.stringify(driveLock, null, 2)); }
+function verifyDriveLock(pass) {
+  const p = String(pass || '');
+  if (driveLock.algo === 'scrypt') return hashPassword(p, driveLock.salt) === driveLock.hash;
+  /* 旧格式 sha256：校验通过即迁移为 scrypt */
+  if (sha256(p + driveLock.salt) === driveLock.hash) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    driveLock = { algo: 'scrypt', salt, hash: hashPassword(p, salt) };
+    saveDriveLock();
+    return true;
+  }
+  return false;
+}
 
 /* 网盘解锁限速：与后台登录同规则但独立计数，互不影响 */
 const driveFails = new Map(); // ip -> { count, lockedUntil }
@@ -325,16 +442,29 @@ function checkDriveToken(req, url) {
 
 function loadAuth() {
   if (!fs.existsSync(AUTH_FILE)) {
-    const salt = crypto.randomBytes(8).toString('hex');
+    const salt = crypto.randomBytes(16).toString('hex');
     const pass = process.env.ADMIN_PASS || 'yeshenyue'; // 首次启动可用 ADMIN_PASS 环境变量设定
-    const rec = { salt, hash: sha256(pass + salt) };
+    const rec = { algo: 'scrypt', salt, hash: hashPassword(pass, salt) };
     fs.writeFileSync(AUTH_FILE, JSON.stringify(rec, null, 2));
     return rec;
   }
   return JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
 }
 function saveAuth() { fs.writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2)); }
-function verifyPassword(pass) { return sha256(String(pass) + auth.salt) === auth.hash; }
+function verifyPassword(pass) {
+  const p = String(pass);
+  if (auth.algo === 'scrypt') {
+    return hashPassword(p, auth.salt) === auth.hash;
+  }
+  /* 旧格式 sha256：校验通过则原地迁移为 scrypt，新盐新哈希落盘 */
+  if (sha256(p + auth.salt) === auth.hash) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    auth = { algo: 'scrypt', salt, hash: hashPassword(p, salt) };
+    saveAuth();
+    return true;
+  }
+  return false;
+}
 function checkToken(req) {
   const m = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   if (!m) return false;
@@ -438,9 +568,23 @@ function sanitizePost(input, isNew) {
     tags: Array.isArray(src.tags) ? src.tags.map((t) => String(t).trim()).filter(Boolean) : [],
     excerpt: String(src.excerpt || '').trim(),
     content: String(src.content || ''),
+    /* 难度等级：1-5，缺省 1。白名单必须保留 level，
+     * 否则后台每次保存都会把存量文章的等级剥离（登神长阶/路线图全部退化 Lv.1） */
+    level: Math.min(5, Math.max(1, Math.round(Number(src.level) || 1))),
   };
   if (!post.title) throw new Error('标题不能为空');
   return post;
+}
+
+/* 文章列表元数据：剔除 content 正文（占 /api/site 95% 体积），保留全部展示字段。
+ * readMin 由服务端按与前端 readingTime 相同的公式预计算，卡片不再需要正文。 */
+function postMeta(p) {
+  const chars = String(p.content || '').replace(/\s/g, '').length;
+  return {
+    id: p.id, title: p.title, slug: p.slug, category: p.category,
+    tags: p.tags || [], featured: p.featured, date: p.date,
+    excerpt: p.excerpt || '', level: p.level, readMin: Math.max(1, Math.round(chars / 350)),
+  };
 }
 
 /* ============ 路由 ============ */
@@ -452,7 +596,7 @@ const server = http.createServer(async (req, res) => {
   try { pathname = decodeURIComponent(url.pathname); } // 非法百分号编码（如 %ZZ）会抛 URIError
   catch (e) { res.writeHead(400, SEC_HEADERS); return res.end('Bad Request'); }
   const method = req.method.toUpperCase();
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = realIP(req);
 
   try {
     /* ---- IP 黑名单：命中直接 429（静态资源也挡，完整隔离） ---- */
@@ -463,20 +607,28 @@ const server = http.createServer(async (req, res) => {
     /* ---- 访问日志（页面与 API） ---- */
     noteVisit(ip, pathname);
 
-    /* ---- 静态资源 ---- */
-    if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
-      return sendFile(res, path.join(PUBLIC_DIR, 'index.html'));
+    /* ---- 静态资源（GET/HEAD：HEAD 只回响应头，供 curl -I 与爬虫探测） ---- */
+    if ((method === 'GET' || method === 'HEAD') && (pathname === '/' || pathname === '/index.html')) {
+      return sendFile(req, res, path.join(PUBLIC_DIR, 'index.html'));
     }
-    if (method === 'GET' && (pathname === '/admin' || pathname === '/admin.html')) {
-      return sendFile(res, path.join(PUBLIC_DIR, 'admin.html'));
+    if ((method === 'GET' || method === 'HEAD') && (pathname === '/admin' || pathname === '/admin.html')) {
+      return sendFile(req, res, path.join(PUBLIC_DIR, 'admin.html'));
     }
-    if (method === 'GET' && /^\/(css|js|uploads|img)\//.test(pathname)) {
-      return sendFile(res, safeJoin(PUBLIC_DIR, pathname));
+    if ((method === 'GET' || method === 'HEAD') && /^\/(css|js|uploads|img)\//.test(pathname)) {
+      return sendFile(req, res, safeJoin(PUBLIC_DIR, pathname));
     }
 
-    /* ---- 公开 API ---- */
+    /* ---- 公开 API：站点信息 + 文章列表（只含元数据，正文走 /api/post/:id） ---- */
     if (method === 'GET' && pathname === '/api/site') {
-      return sendJSON(res, 200, site);
+      return sendJSON(res, 200, { site: site.site, posts: site.posts.map(postMeta) });
+    }
+
+    /* ---- 公开 API：单篇文章全量（id 或 slug 寻址） ---- */
+    if (method === 'GET' && pathname.startsWith('/api/post/')) {
+      const key = pathname.slice('/api/post/'.length);
+      const p = site.posts.find((x) => x.id === key) || site.posts.find((x) => x.slug === key);
+      if (!p) return sendJSON(res, 404, { error: '文章不存在' });
+      return sendJSON(res, 200, { post: p });
     }
 
     /* ---- 照片墙（公开只读） ---- */
@@ -484,16 +636,22 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { photos: gallery });
     }
 
-    /* ---- 访客互动：点赞（跨访客真实计数，持久化 likes.json） ---- */
+    /* ---- 访客互动：点赞（跨访客真实计数，持久化 likes.json；IP 3 秒冷却防刷） ---- */
     if (method === 'GET' && pathname === '/api/likes') {
       return sendJSON(res, 200, { likes });
     }
     if (method === 'POST' && pathname === '/api/like') {
+      const now = Date.now();
+      if (lastLikeAt.size > 5000) lastLikeAt.clear(); // 防内存膨胀
+      if (now - (lastLikeAt.get(ip) || 0) < 3000) {
+        return sendJSON(res, 429, { error: '点太快了，歇一秒' });
+      }
       const b = await readBody(req);
       const id = String((b && b.id) || '');
       if (!site.posts.some((p) => p.id === id)) return sendJSON(res, 404, { error: '文章不存在' });
       likes[id] = (likes[id] || 0) + 1;
       saveJSON(LIKE_FILE, likes);
+      lastLikeAt.set(ip, now);
       return sendJSON(res, 200, { count: likes[id] });
     }
 
@@ -506,7 +664,6 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { comments: list });
     }
     if (method === 'POST' && pathname === '/api/comment') {
-      const ip = req.socket.remoteAddress || '';
       const now = Date.now();
       if (now - (lastCommentAt.get(ip) || 0) < 5000) {
         return sendJSON(res, 429, { error: '发言太快，歇几秒再发' });
@@ -517,7 +674,8 @@ const server = http.createServer(async (req, res) => {
       const name = String((b && b.name) || '').trim().slice(0, 24) || '匿名访客';
       if (!site.posts.some((p) => p.id === postId)) return sendJSON(res, 404, { error: '文章不存在' });
       if (!text) return sendJSON(res, 400, { error: '留言内容不能为空' });
-      const item = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), post: postId, name, text, t: now };
+      /* 记录留言者 IP：后台「留言管理」定位垃圾留言来源用 */
+      const item = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), post: postId, name, text, t: now, ip };
       comments.push(item);
       const perPost = comments.filter((c) => c.post === postId).sort((a2, b2) => b2.t - a2.t);
       if (perPost.length > 50) {
@@ -534,7 +692,6 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { notes: wall.slice().sort((a, b2) => b2.t - a.t) });
     }
     if (method === 'POST' && pathname === '/api/wall') {
-      const ip = req.socket.remoteAddress || '';
       const now = Date.now();
       if (now - (lastWallAt.get(ip) || 0) < 4000) {
         return sendJSON(res, 429, { error: '贴得太快，歇几秒再贴' });
@@ -555,16 +712,26 @@ const server = http.createServer(async (req, res) => {
 
     /* ---- 多人聊天室：join / poll / send / leave ---- */
     if (method === 'POST' && pathname === '/api/chat/join') {
+      /* join 冷却 + 在线人数上限：防止脚本无限伪造「潜入」系统消息刷爆消息流与在线名单 */
+      const now = Date.now();
+      if (lastJoinAt.size > 5000) lastJoinAt.clear();
+      if (now - (lastJoinAt.get(ip) || 0) < 30000) {
+        return sendJSON(res, 429, { error: '刚加入过，请稍候再试' });
+      }
+      pruneOnline();
+      if (chat.online.length >= 100) {
+        return sendJSON(res, 429, { error: '房间已满，稍后再来' });
+      }
       const b = await readBody(req);
       const name = String((b && b.name) || '').trim().slice(0, 16) || '旅人' + ((Math.random() * 900 + 100) | 0);
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const palette = ['#c4ff3d', '#61d6ff', '#ff7ab8', '#ffb454', '#b18cff', '#4ade80'];
       const color = palette[(Math.random() * palette.length) | 0];
-      pruneOnline();
-      chat.online.push({ id, name, color, t: Date.now() });
-      chat.msgs.push({ sys: 1, id: 's' + id, text: name + ' 潜入了聊天室', t: Date.now() });
+      chat.online.push({ id, name, color, t: now });
+      chat.msgs.push({ sys: 1, id: 's' + id, text: name + ' 潜入了聊天室', t: now });
       if (chat.msgs.length > 300) chat.msgs = chat.msgs.slice(-300);
       saveChat();
+      lastJoinAt.set(ip, now);
       return sendJSON(res, 200, { id, name, color });
     }
     if (method === 'GET' && pathname === '/api/chat') {
@@ -667,7 +834,10 @@ const server = http.createServer(async (req, res) => {
         'Content-Disposition': contentDisposition(path.basename(target)),
         'Cache-Control': 'no-cache',
       }, SEC_HEADERS));
-      return res.end(fs.readFileSync(target));
+      /* 流式发送：readFileSync 读 30MB 会把事件循环卡住，期间全站请求（含聊天/后台）冻结 */
+      const stream = fs.createReadStream(target);
+      stream.on('error', () => { try { res.destroy(); } catch (_) {} });
+      return stream.pipe(res);
     }
 
     /* ---- RSS 订阅源：最新 30 篇，标题 + 摘要 + 链接 ---- */
@@ -704,7 +874,6 @@ ${items}
 
     /* ---- 登录（带限速：连续失败 5 次锁 15 分钟） ---- */
     if (method === 'POST' && pathname === '/api/login') {
-      const ip = req.socket.remoteAddress || 'unknown';
       const lockedMin = loginLockedMinutes(ip);
       if (lockedMin !== null) return sendJSON(res, 429, { error: `失败次数过多，请约 ${lockedMin} 分钟后再试` });
       const b = await readBody(req);
@@ -722,11 +891,10 @@ ${items}
 
     /* ---- 网盘解锁：口令换访问 token（带独立限速） ---- */
     if (method === 'POST' && pathname === '/api/drive/unlock') {
-      const ip = req.socket.remoteAddress || 'unknown';
       const lockedMin = driveLockedMinutes(ip);
       if (lockedMin !== null) return sendJSON(res, 429, { error: `尝试次数过多，请约 ${lockedMin} 分钟后再试` });
       const b = await readBody(req);
-      if (sha256(String(b.pass || '') + driveLock.salt) !== driveLock.hash) {
+      if (!verifyDriveLock(b.pass)) {
         const rf = recordDriveFail(ip);
         noteWatch(ip, 'drive-unlock-fail');
         return sendJSON(res, 401, { error: rf.locked ? '失败次数过多，已锁定 15 分钟' : `口令错误（还剩 ${rf.left} 次机会）` });
@@ -796,8 +964,8 @@ ${items}
         if (!b.next || String(b.next).length < 4) return sendJSON(res, 400, { error: '新密码至少 4 位' });
         // 注意：必须先用局部变量生成新盐，再连同新盐一起算哈希；
         // 若写成对象字面量内引用 auth.salt，会取到旧盐导致「改密后永远登录失败」。
-        const newSalt = crypto.randomBytes(8).toString('hex');
-        auth = { salt: newSalt, hash: sha256(String(b.next) + newSalt) };
+        const newSalt = crypto.randomBytes(16).toString('hex');
+        auth = { algo: 'scrypt', salt: newSalt, hash: hashPassword(String(b.next), newSalt) };
         saveAuth();
         return sendJSON(res, 200, { ok: true });
       }
@@ -885,8 +1053,8 @@ ${items}
         const np = String(b.newPass || '');
         if (np.length < 4) return sendJSON(res, 400, { error: '口令至少 4 位' });
         if (np.length > 64) return sendJSON(res, 400, { error: '口令过长（上限 64 位）' });
-        driveLock = { salt: crypto.randomBytes(8).toString('hex'), hash: '' };
-        driveLock.hash = sha256(np + driveLock.salt);
+        const newSalt = crypto.randomBytes(16).toString('hex');
+        driveLock = { algo: 'scrypt', salt: newSalt, hash: hashPassword(np, newSalt) };
         saveDriveLock();
         for (const [t, rec] of sessions) if (rec.kind === 'drive') sessions.delete(t);
         return sendJSON(res, 200, { ok: true });
@@ -989,7 +1157,16 @@ ${items}
     res.writeHead(404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, SEC_HEADERS));
     res.end('Not Found');
   } catch (e) {
-    sendJSON(res, 500, { error: String((e && e.message) || e) });
+    const msg = String((e && e.message) || e);
+    if (msg.includes('请求体过大')) {
+      /* 超限请求统一回 413（此前连接被直接销毁，客户端只看到 ECONNRESET） */
+      if (!res.headersSent) {
+        return sendJSON(res, 413, { error: '请求体过大' });
+      }
+      try { res.destroy(); } catch (_) {}
+      return;
+    }
+    sendJSON(res, 500, { error: msg });
   }
 });
 
@@ -1001,6 +1178,11 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason && reason.stack || reason);
 });
+/* 退出前冲刷访问日志，节流期间的数据不丢 */
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { try { flushVisits(); } catch (_) {} process.exit(0); });
+}
+process.on('exit', () => { try { flushVisits(); } catch (_) {} });
 
 /* 端口自适应：首选端口被占用时自动 +1（最多 +20），实际端口写入 .port 供启停脚本/看门狗读取。
  * 注意：Windows 上 server.listen 对被占端口可能出现"成功回调与 EADDRINUSE 同时触发"的假成功，

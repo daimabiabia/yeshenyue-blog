@@ -8,17 +8,23 @@
   if (window.FXS) return;
 
   var DEF = {
-    trail: 1,   /* 鼠标糖果拖尾 */
-    burst: 1,   /* 点击爆炸 */
-    mega: 1,    /* 长按超级爆炸 */
-    shock: 1,   /* 双击冲击波 / 蓄力环 */
-    rainbow: 1, /* Shift 彩虹轨迹 */
-    konami: 1,  /* Konami 糖果雨 */
-    tilt: 1,    /* 卡片 3D 倾斜 */
-    sfx: 0,     /* 8-bit 音效（默认关，与 SFX 内部状态同步） */
-    crt: 1,     /* CRT 扫描线 */
-    bg: 1,      /* 背景动效（极光色斑 / 代码字符层） */
-    waifu: 1,   /* Live2D 看板娘 */
+    trail: 1,    /* 鼠标糖果拖尾 */
+    burst: 1,    /* 点击爆炸 */
+    mega: 1,     /* 长按超级爆炸 */
+    shock: 1,    /* 双击冲击波 / 蓄力环 */
+    rainbow: 1,  /* Shift 彩虹轨迹 */
+    konami: 1,   /* Konami 糖果雨 */
+    tilt: 1,     /* 卡片 3D 倾斜 */
+    sfx: 0,      /* 8-bit 音效（默认关，与 SFX 内部状态同步） */
+    crt: 1,      /* CRT 扫描线 */
+    bg: 1,       /* 背景动效（极光色斑 / 代码字符层） */
+    waifu: 1,    /* Live2D 看板娘 */
+    cursor: 1,   /* 惯性光标环（桌面端） */
+    net: 1,      /* Hero 网络拓扑粒子 */
+    skew: 1,     /* 滚动速度微斜切 */
+    wipe: 1,     /* 路由切换扫描线转场 */
+    ripple: 1,   /* 按钮点击涟漪 */
+    scramble: 1, /* 眉标文字乱码解码 */
   };
   var S = {};
   try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem('fxSettings') || '{}')); } catch (e) { S = Object.assign({}, DEF); }
@@ -73,7 +79,13 @@
     ['shock', '🌀 双击冲击波', '双击空白处扩散圆环'],
     ['rainbow', '🌈 Shift 彩虹轨迹', '按住 Shift 拖出彩虹光带'],
     ['konami', '🎮 Konami 糖果雨', '↑↑↓↓←→←→BA 触发彩蛋'],
+    ['cursor', '🎯 惯性光标环', '跟随光标的惯性圆环，悬停放大'],
+    ['ripple', '🔘 按钮涟漪', '点按钮/链接扩散主题色圆环'],
     ['tilt', '📇 卡片 3D 倾斜', '悬停卡片产生立体效果'],
+    ['net', '🕸 Hero 网络拓扑', '首屏设备组网粒子，靠近会点亮'],
+    ['skew', '📐 滚动微斜切', '快速滚动时内容轻微倾斜回弹'],
+    ['wipe', '🎞 路由转场', '切换页面时一条墨色扫描线扫过'],
+    ['scramble', '🔠 眉标乱码解码', '悬停区块标题打出解码动画'],
     ['sfx', '🔊 8-bit 音效', '像素风操作音（同 S 键）'],
     ['crt', '📺 CRT 扫描线', '深色模式的复古扫描线质感'],
     ['bg', '🌌 背景动效', '极光色斑漂移与上浮代码字符'],

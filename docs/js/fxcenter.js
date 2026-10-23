@@ -1,0 +1,362 @@
+/* 夜神月博客 · fxcenter.js 特效中心
+ * 统一管理全部特效开关：拖尾/点击爆炸/超级爆炸/冲击波/彩虹/Konami/卡片倾斜/音效/CRT/看板娘
+ * localStorage('fxSettings') 持久化，fx.js / live2d init 实时读取
+ * 面板：导航 ⚙ 按钮或 Ctrl+E 呼出
+ */
+(function () {
+  'use strict';
+  if (window.FXS) return;
+
+  var DEF = {
+    trail: 1,    /* 鼠标糖果拖尾 */
+    burst: 1,    /* 点击爆炸 */
+    mega: 1,     /* 长按超级爆炸 */
+    shock: 1,    /* 双击冲击波 / 蓄力环 */
+    rainbow: 1,  /* Shift 彩虹轨迹 */
+    konami: 1,   /* Konami 糖果雨 */
+    tilt: 1,     /* 卡片 3D 倾斜 */
+    sfx: 0,      /* 8-bit 音效（默认关，与 SFX 内部状态同步） */
+    crt: 1,      /* CRT 扫描线 */
+    bg: 1,       /* 背景动效（极光色斑 / 代码字符层） */
+    waifu: 1,    /* Live2D 看板娘 */
+    cursor: 1,   /* 惯性光标环（桌面端） */
+    net: 1,      /* Hero 网络拓扑粒子 */
+    skew: 1,     /* 滚动速度微斜切 */
+    wipe: 1,     /* 路由切换扫描线转场 */
+    ripple: 1,   /* 按钮点击涟漪 */
+    scramble: 1, /* 眉标文字乱码解码 */
+  };
+  var S = {};
+  try { S = Object.assign({}, DEF, JSON.parse(localStorage.getItem('fxSettings') || '{}')); } catch (e) { S = Object.assign({}, DEF); }
+
+  function syncSfxIcon(on) {
+    var b = document.getElementById('sfxBtn');
+    if (b) b.textContent = on ? '🔊' : '🔇';
+  }
+
+  /* sfx 唯一事实源：引擎(SFX.enabled) 为准，fxSettings.sfx / 面板勾选 / 导航图标
+   * 全部通过 sfxchange 事件对齐（setSfx / app.js 的 S 键与按钮都汇到这里） */
+  function setSfx(on) {
+    if (window.SFX && (window.SFX.enabled ? 1 : 0) !== (on ? 1 : 0)) window.SFX.toggle();
+    try { document.dispatchEvent(new CustomEvent('sfxchange')); } catch (e) {}
+  }
+
+  function apply() {
+    document.documentElement.classList.toggle('fx-no-crt', !S.crt);
+    var w = document.getElementById('waifu');
+    if (w) w.style.display = S.waifu ? '' : 'none';
+    /* 与音效引擎同步（面板里改的 sfx 项映射到 SFX 自身开关） */
+    if (window.SFX) {
+      var on = window.SFX.enabled;
+      if ((S.sfx ? 1 : 0) !== (on ? 1 : 0)) window.SFX.toggle();
+      syncSfxIcon(S.sfx ? 1 : 0);
+    }
+  }
+
+  window.FXS = {
+    get: function (k) { return !!S[k]; },
+    set: function (k, v) {
+      S[k] = v ? 1 : 0;
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      apply();
+      try { document.dispatchEvent(new CustomEvent('fxchange', { detail: { key: k, on: !!S[k] } })); } catch (e) {}
+    },
+    all: function () { return Object.assign({}, S); },
+    reset: function () {
+      Object.keys(DEF).forEach(function (k) { S[k] = DEF[k]; });
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      apply();
+      renderPanel();
+      renderBgUI(); /* 背景方案高亮/压暗值一并回显（reset 前只刷开关不同步背景 UI） */
+    },
+  };
+
+  /* ---- 面板 ---- */
+  var META = [
+    ['trail', '🍬 鼠标糖果拖尾', '移动鼠标掉落彩色糖果'],
+    ['burst', '💥 点击爆炸', '点空白处喷发糖果碎片'],
+    ['mega', '⚡ 长按超级爆炸', '按住 0.6 秒释放 60 粒大爆炸'],
+    ['shock', '🌀 双击冲击波', '双击空白处扩散圆环'],
+    ['rainbow', '🌈 Shift 彩虹轨迹', '按住 Shift 拖出彩虹光带'],
+    ['konami', '🎮 Konami 糖果雨', '↑↑↓↓←→←→BA 触发彩蛋'],
+    ['cursor', '🎯 惯性光标环', '跟随光标的惯性圆环，悬停放大'],
+    ['ripple', '🔘 按钮涟漪', '点按钮/链接扩散主题色圆环'],
+    ['tilt', '📇 卡片 3D 倾斜', '悬停卡片产生立体效果'],
+    ['net', '🕸 Hero 网络拓扑', '首屏设备组网粒子，靠近会点亮'],
+    ['skew', '📐 滚动微斜切', '快速滚动时内容轻微倾斜回弹'],
+    ['wipe', '🎞 路由转场', '切换页面时一条墨色扫描线扫过'],
+    ['scramble', '🔠 眉标乱码解码', '悬停区块标题打出解码动画'],
+    ['sfx', '🔊 8-bit 音效', '像素风操作音（同 S 键）'],
+    ['crt', '📺 CRT 扫描线', '深色模式的复古扫描线质感'],
+    ['bg', '🌌 背景动效', '极光色斑漂移与上浮代码字符'],
+    ['waifu', '🐕 看板娘', '右下角 Live2D 看板娘'],
+  ];
+
+  function ensurePanel() {
+    var box = document.getElementById('fxPanel');
+    if (!box || box._built) return box;
+    var rows = META.map(function (m) {
+      return '<label class="fx-row"><input type="checkbox" data-fx="' + m[0] + '" /><span class="fx-name">' + m[1] + '</span><span class="fx-desc">' + m[2] + '</span></label>';
+    }).join('');
+    var list = box.querySelector('.fx-rows');
+    if (list) list.innerHTML = rows;
+    /* ---- 背景定制区块 ---- */
+    var host = box.querySelector('.fx-bg-host');
+    if (host) {
+      host.innerHTML =
+        '<div class="sec-head" style="padding:0 0 8px"><span class="kicker">BACKDROP</span><h3 style="margin:0;font-size:15px">背景定制</h3></div>' +
+        '<div class="bg-schemes" role="radiogroup" aria-label="背景方案">' +
+        [['aurora', '🌌 极光'], ['circuit', '🔌 电路板'], ['grid', '📐 蓝图'], ['stars', '✨ 星野'], ['rain', '🟩 数字雨'], ['plain', '📄 素雅']]
+          .map(function (s) { return '<button type="button" class="bg-scheme" data-scheme="' + s[0] + '">' + s[1] + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="bg-custom-row"><input type="url" id="bgCustomUrl" class="bg-url-input" placeholder="壁纸 URL（或直接选本地图片）" />' +
+        '<button type="button" class="btn" id="bgPick">📁 本地图片</button>' +
+        '<button type="button" class="btn" id="bgApply">应用</button></div>' +
+        '<input type="file" id="bgFile" accept="image/*" hidden />' +
+        '<p class="bg-pick-status hint" id="bgPickStatus" hidden></p>' +
+        '<label class="fx-row"><span class="fx-name">🖼 壁纸压暗</span><input type="range" id="bgDim" min="0" max="70" step="5" style="flex:1" /><em class="mono" id="bgDimVal">35%</em></label>';
+      host.querySelectorAll('.bg-scheme').forEach(function (b) {
+        b.addEventListener('click', function () { setScheme(b.dataset.scheme); });
+      });
+      var applyBtn = host.querySelector('#bgApply');
+      if (applyBtn) applyBtn.addEventListener('click', function () {
+        var inp = host.querySelector('#bgCustomUrl');
+        var url = (inp && inp.value || '').trim();
+        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: url } }));
+        renderBgUI();
+      });
+      /* ---- 本地图片 → 文件资源管理器选择 → 压缩 → 设为壁纸 ---- */
+      var pickBtn = host.querySelector('#bgPick');
+      var fileInput = host.querySelector('#bgFile');
+      var status = host.querySelector('#bgPickStatus');
+      function pickStatus(msg) {
+        if (!status) return;
+        status.hidden = !msg;
+        status.textContent = msg || '';
+      }
+      /* 大图压缩：最长边 ≤1920，JPEG q0.85；quota 超了降级 1280/q0.7 再试 */
+      function compressToDataUrl(file, maxSide, quality) {
+        return new Promise(function (resolve, reject) {
+          var fr = new FileReader();
+          fr.onerror = function () { reject(new Error('读取文件失败')); };
+          fr.onload = function () {
+            var img = new Image();
+            img.onerror = function () { reject(new Error('无法解析为图片')); };
+            img.onload = function () {
+              var w = img.naturalWidth, h = img.naturalHeight;
+              var scale = Math.min(1, maxSide / Math.max(w, h));
+              var cv = document.createElement('canvas');
+              cv.width = Math.round(w * scale);
+              cv.height = Math.round(h * scale);
+              cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+              resolve(cv.toDataURL('image/jpeg', quality));
+            };
+            img.src = fr.result;
+          };
+          fr.readAsDataURL(file);
+        });
+      }
+      function applyLocalWallpaper(file) {
+        if (!file) return;
+        if (!/^image\//.test(file.type || '')) { pickStatus('⚠ 只支持图片文件'); return; }
+        pickStatus('⏳ 正在处理 ' + file.name + ' …');
+        compressToDataUrl(file, 1920, 0.85).then(function (dataUrl) {
+          document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: dataUrl } }));
+          var kb = Math.round(dataUrl.length * 3 / 4 / 1024);
+          pickStatus('✅ 已应用：' + file.name + '（压缩后 ' + kb + ' KB，保存在本机）');
+        }).catch(function (err) {
+          /* 首次失败多半是 localStorage 装不下 → 降级再压一遍 */
+          compressToDataUrl(file, 1280, 0.7).then(function (dataUrl) {
+            document.dispatchEvent(new CustomEvent('bgscheme', { detail: { custom: dataUrl } }));
+            var kb = Math.round(dataUrl.length * 3 / 4 / 1024);
+            pickStatus('✅ 已应用（降级压缩 ' + kb + ' KB）：' + file.name);
+          }).catch(function () {
+            pickStatus('⚠ 应用失败：' + (err && err.message || '未知错误'));
+          });
+        });
+      }
+      if (pickBtn && fileInput) {
+        pickBtn.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () {
+          applyLocalWallpaper(fileInput.files && fileInput.files[0]);
+          fileInput.value = ''; /* 允许重复选同一张 */
+        });
+        /* 拖拽支持：把图片直接拖进面板背景区 */
+        host.addEventListener('dragover', function (e) { e.preventDefault(); });
+        host.addEventListener('drop', function (e) {
+          e.preventDefault();
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+            applyLocalWallpaper(e.dataTransfer.files[0]);
+          }
+        });
+      }
+      var dim = host.querySelector('#bgDim');
+      if (dim) dim.addEventListener('input', function () {
+        /* input 事件：拖动中实时预览压暗（原 change 只在松手后生效，拖动全程无反馈） */
+        var v = Number(dim.value);
+        var lab = host.querySelector('#bgDimVal');
+        if (lab) lab.textContent = v + '%';
+        document.dispatchEvent(new CustomEvent('bgscheme', { detail: { dim: v } }));
+      });
+    }
+    box.querySelectorAll('input[data-fx]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        if (cb.dataset.fx === 'sfx') { setSfx(cb.checked); return; }
+        window.FXS.set(cb.dataset.fx, cb.checked);
+      });
+    });
+    var rb = box.querySelector('#fxReset');
+    if (rb) rb.addEventListener('click', function () { window.FXS.reset(); });
+    var m = box.querySelector('.cmdk-mask');
+    if (m) m.addEventListener('click', function () { box.hidden = true; });
+    var esc = box.querySelector('.cmdk-esc');
+    if (esc) esc.addEventListener('click', function () { box.hidden = true; });
+    box._built = true;
+    return box;
+  }
+
+  function getBgCfg() {
+    try { return JSON.parse(localStorage.getItem('ysyBg') || '{}'); } catch (e) { return {}; }
+  }
+  function setScheme(scheme) {
+    document.dispatchEvent(new CustomEvent('bgscheme', { detail: { scheme: scheme } }));
+    renderBgUI();
+  }
+  function renderBgUI() {
+    var box = document.getElementById('fxPanel');
+    if (!box) return;
+    var cfg = getBgCfg();
+    var scheme = cfg.scheme || 'aurora';
+    box.querySelectorAll('.bg-scheme').forEach(function (b) { b.classList.toggle('on', b.dataset.scheme === scheme); });
+    var url = box.querySelector('#bgCustomUrl');
+    if (url && document.activeElement !== url) url.value = cfg.custom || '';
+    var dim = box.querySelector('#bgDim');
+    var dimVal = box.querySelector('#bgDimVal');
+    if (dim) dim.value = typeof cfg.dim === 'number' ? cfg.dim : 35;
+    if (dimVal) dimVal.textContent = (typeof cfg.dim === 'number' ? cfg.dim : 35) + '%';
+  }
+
+  function renderPanel() {
+    var box = ensurePanel();
+    if (!box) return;
+    var s = window.FXS.all();
+    box.querySelectorAll('input[data-fx]').forEach(function (cb) { cb.checked = !!s[cb.dataset.fx]; });
+  }
+
+  function openPanel() {
+    var box = ensurePanel();
+    if (!box) return;
+    renderPanel();
+    box.hidden = false;
+  }
+
+  /* 同步 SFX 实际状态到面板（音效可能被 S 键改变） */
+  function syncSfx() {
+    if (!window.SFX) return;
+    S.sfx = window.SFX.enabled ? 1 : 0;
+    try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+    syncSfxIcon(S.sfx ? 1 : 0);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    apply();
+    var btn = document.getElementById('fxBtn');
+    if (btn) btn.addEventListener('click', function () {
+      syncSfx();
+      var box = document.getElementById('fxPanel');
+      if (box) box.hidden = !box.hidden;
+      if (box && !box.hidden) { renderPanel(); renderBgUI(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        syncSfx();
+        var box = document.getElementById('fxPanel');
+        if (box) box.hidden = !box.hidden;
+        if (box && !box.hidden) { renderPanel(); renderBgUI(); }
+      }
+      if (e.key === 'Escape') {
+        var p = document.getElementById('fxPanel');
+        if (p && !p.hidden) p.hidden = true;
+      }
+      /* 注意：S 键音效开关由 app.js 全局快捷键处理（历史既有），这里不再重复注册，
+       * 否则同一次按键双方各 toggle 一次 → 状态错乱。本模块监听 sfxchange 保持同步。 */
+    });
+    /* S 键 / 导航按钮切换音效后，同步面板勾选态与 fxSettings */
+    document.addEventListener('sfxchange', function () {
+      if (!window.SFX) return;
+      S.sfx = window.SFX.enabled ? 1 : 0;
+      try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {}
+      var cb = document.querySelector('#fxPanel input[data-fx="sfx"]');
+      if (cb) cb.checked = !!S.sfx;
+      syncSfxIcon(S.sfx ? 1 : 0);
+    });
+  });
+
+  /* 看板娘延迟加载：开关打开且尚未加载时调用 */
+  window.FXS.loadWaifu = function () {
+    if (!S.waifu) return;
+    if (window.__waifuLoaded || window.__waifuLoading) return;
+    window.__waifuLoading = true;
+    var base = '/js/live2d/';
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = base + 'waifu.css';
+    document.head.appendChild(link);
+    /* 图片跨域补丁（live2d 绘制需要） */
+    if (!window.__waifuImgPatched) {
+      window.__waifuImgPatched = true;
+      var OI = window.Image;
+      window.Image = function () {
+        var img = new OI();
+        try { img.crossOrigin = 'anonymous'; } catch (e) {}
+        return img;
+      };
+      window.Image.prototype = OI.prototype;
+    }
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src = base + 'waifu-tips.js';
+    s.onload = function () {
+      window.__waifuLoaded = true;
+      if (typeof window.initWidget === 'function') {
+        /* 该开关一旦为 true 会永久拒绝渲染； ours 的 FXS 面板才是唯一开关，这里强制清掉 */
+        try { localStorage.removeItem('waifu-disabled'); } catch (e) {}
+        /* 模型列表读取 waifu-tips.json 的 models 字段（已本地化），config.models 无效 */
+        window.initWidget({
+          waifuPath: base + 'waifu-tips.json',
+          cubism2Path: base + 'live2d.min.js',
+          tools: ['switch-model', 'switch-texture', 'photo', 'info', 'quit'],
+          logLevel: 'warn',
+          drag: true,
+        });
+        /* 新版首次访问只显示边缘小召唤按钮；且 24h 内重复访问点按钮会被
+         * waifu-display 时间戳判定吞掉、完全不调召唤函数。这里先删时间戳
+         * 再点按钮 → 必然走完整召唤（插 DOM + 加载模型 + 工具条）。 */
+        setTimeout(function () {
+          try {
+            localStorage.removeItem('waifu-display');
+            localStorage.removeItem('waifu-disabled');
+          } catch (e) {}
+          var t = document.getElementById('waifu-toggle');
+          if (t) t.click();
+        }, 400);
+        /* 兜底：2.2s 后仍未升场则强制显示容器（模型加载由点击路径保证） */
+        setTimeout(function () {
+          var w = document.getElementById('waifu');
+          if (w && !w.classList.contains('waifu-active')) {
+            w.classList.remove('waifu-hidden');
+            w.classList.add('waifu-active');
+            var tg = document.getElementById('waifu-toggle');
+            if (tg) tg.remove();
+          }
+        }, 2200);
+        if (!S.waifu) {
+          var w = document.getElementById('waifu');
+          if (w) w.style.display = 'none';
+        }
+      }
+    };
+    document.head.appendChild(s);
+  };
+})();

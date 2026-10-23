@@ -53,6 +53,14 @@
     unlocked[id] = Date.now();
     save();
     toast(a.icon, '成就解锁 · ' + a.title, a.desc);
+    /* 解锁礼花：从 Toast 弹出的位置向上喷一发糖果 */
+    try {
+      if (window.FX && FX.ready && FX.burst) {
+        var y = window.innerHeight - 110;
+        FX.burst(window.innerWidth - 110, y, 26);
+        setTimeout(function () { FX.burst(window.innerWidth - 150, y - 30, 16); }, 120);
+      }
+    } catch (e) {}
     try { if (window.SFX && window.SFX.enabled) window.SFX.coin(); } catch (e) {}
     return true;
   }

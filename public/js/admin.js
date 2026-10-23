@@ -1,6 +1,9 @@
 /* 夜神月博客 · 后台管理逻辑（零依赖，健壮版） */
 (function () {
   'use strict';
+  /* Google Fonts 异步生效（CSP 禁内联 onload，由这里换 media） */
+  const fontAsync = document.getElementById('fontAsync');
+  if (fontAsync) fontAsync.media = 'all';
   const $ = (s) => document.querySelector(s);
   const token = () => localStorage.getItem('adminToken');
 
@@ -125,7 +128,7 @@
       tables += (c.match(/^\|.+\|$/gm) || []).length;
       byCat[p.category] = (byCat[p.category] || 0) + 1;
     }
-    const catName = (id) => { const c = (SITE && SITE.cats || []).find((x) => x.id === id); return c ? c.name : id; };
+    const catName = (id) => { const c = (SITE && SITE.categories || []).find((x) => x.id === id); return c ? c.name : id; };
     const dist = Object.entries(byCat).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `<span class="sb-chip">${escapeHtml(catName(k))} <b>${v}</b></span>`).join('');
     bar.innerHTML =

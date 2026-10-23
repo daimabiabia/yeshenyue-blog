@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>夜神月 · 物联网技术博客</title>
+    <link>https://daimabiabia.github.io/yeshenyue-blog</link>
+    <description>小白起步，正在登神长阶的路上 —— 一行一行把物联网从 0 跑通到 1</description>
+    <language>zh-CN</language>
+    <lastBuildDate>Fri, 23 Oct 2026 16:25:22 GMT</lastBuildDate>
+    <item>
+      <title>PCB 天线净空区踩坑：6dB 增益是怎么没的</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/pcb-antenna-clearance</link>
+      <guid isPermaLink="false">pH2</guid>
+      <category>硬件随笔</category>
+      <pubDate>Wed, 19 Nov 2025 00:00:00 GMT</pubDate>
+      <description>同样模组，别人传得远，你家一堵墙就断。查了一圈发现天线净空区被铺了地，增益直接掉 6dB。净空不是装饰，是物理边界。</description>
+    </item>
+    <item>
+      <title>证书没过期却握手失败？原来是板子时间回到了 1970</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/tls-time-skew</link>
+      <guid isPermaLink="false">pT2</guid>
+      <category>踩坑记录</category>
+      <pubDate>Tue, 09 Dec 2025 00:00:00 GMT</pubDate>
+      <description>TLS 握手报「证书不在有效期」，但证书明明还有两年。根因是板子 RTC 电池没电，系统时间停在 1970。一个容易被忽视的硬依赖。</description>
+    </item>
+    <item>
+      <title>I2C 上拉电阻怎么选？我调了一个凌晨换来的教训</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/i2c-pullup</link>
+      <guid isPermaLink="false">pT1</guid>
+      <category>踩坑记录</category>
+      <pubDate>Wed, 14 Jan 2026 00:00:00 GMT</pubDate>
+      <description>BME280 在 100kHz 正常，一切到 400kHz 就读不到、偶尔全 0xFF。根因是上拉电阻和总线电容没商量好。附计算公式。</description>
+    </item>
+    <item>
+      <title>电池怎么选？容量、放电率、低温衰减一次说清</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/battery-selection</link>
+      <guid isPermaLink="false">pH1</guid>
+      <category>硬件随笔</category>
+      <pubDate>Tue, 27 Jan 2026 00:00:00 GMT</pubDate>
+      <description>标称 2000mAh 的电池，冬天可能只放出 1200mAh。选型看放电曲线，不看标称数字。这篇把温度、放电率、自放电三个维度讲透。</description>
+    </item>
+    <item>
+      <title>OTA 差分升级：给 200 个节点省下 200MB 流量的实操</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/ota-delta</link>
+      <guid isPermaLink="false">pC3</guid>
+      <category>云边协同</category>
+      <pubDate>Sat, 28 Feb 2026 00:00:00 GMT</pubDate>
+      <description>整包 1.2MB 改差分 80KB，200 个节点一次省下 200MB 流量。但签名校验和回滚兜底不能省——这是 OTA 的底线。</description>
+    </item>
+    <item>
+      <title>量产前必做的 EMC 三件事：别等摸底试验才改板子</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/emc-prep</link>
+      <guid isPermaLink="false">p6</guid>
+      <category>硬件随笔</category>
+      <pubDate>Mon, 02 Mar 2026 00:00:00 GMT</pubDate>
+      <description>电源滤波、地平面、接口防护，这三件事量产前不改，售后必爆。EMC 是设计出来的，不是测出来的。</description>
+    </item>
+    <item>
+      <title>从 485 总线到 MQTT：手把手把 Modbus 寄存器变成可读数据</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/modbus-to-mqtt</link>
+      <guid isPermaLink="false">pP3</guid>
+      <category>协议解析</category>
+      <pubDate>Wed, 18 Mar 2026 00:00:00 GMT</pubDate>
+      <description>把 485 总线上的寄存器映射成 MQTT Topic，最难的不是通信，是语义。这篇用一份 YAML 配置，讲清怎么把数字变成人话。</description>
+    </item>
+    <item>
+      <title>自建 MQTT 集群：厂区和云端 EMQX 双向桥接实战</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/emqx-bridge</link>
+      <guid isPermaLink="false">pC2</guid>
+      <category>云边协同</category>
+      <pubDate>Fri, 03 Apr 2026 00:00:00 GMT</pubDate>
+      <description>厂区本地 EMQX 与云上 EMQX 双向桥接，断网本地自治、联网自动同步。重点是先定好「脑裂时谁说了算」。</description>
+    </item>
+    <item>
+      <title>从零理解 MQTT-SN：让跑不动 TCP 的小节点也能上云</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/mqtt-sn-esp32</link>
+      <guid isPermaLink="false">p5</guid>
+      <category>嵌入式实战</category>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>有些小节点连 TCP 都跑不动，怎么办？MQTT-SN 跑在 UDP 上，让极小 MCU 也能进同一套消息体系。这篇讲清它是什么、什么时候该用。</description>
+    </item>
+    <item>
+      <title>新手也能学会：如何把一台老设备的串口协议&#39;翻&#39;出来</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/private-binary-reverse</link>
+      <guid isPermaLink="false">pP2</guid>
+      <category>协议解析</category>
+      <pubDate>Wed, 22 Apr 2026 00:00:00 GMT</pubDate>
+      <description>一台只给 EXE 不给协议的旧设备，怎么把它串口帧结构翻出来？这篇用「假设—验证」的循环，带你从抓包到写出解析文档。</description>
+    </item>
+    <item>
+      <title>在网关上用 Node-RED 做本地联动：断网也能自动关电机</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/nodered-edge</link>
+      <guid isPermaLink="false">pC1</guid>
+      <category>云边协同</category>
+      <pubDate>Mon, 11 May 2026 00:00:00 GMT</pubDate>
+      <description>如果「温度超阈值就关电机」要上云再下发，断网就失控。这类时效性高、影响现场安全的规则，必须下沉到网关本地。这篇手把手搭一个。</description>
+    </item>
+    <item>
+      <title>FreeRTOS 栈溢出排查：一次离奇死机的完整破案过程</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/freertos-stack</link>
+      <guid isPermaLink="false">p4</guid>
+      <category>踩坑记录</category>
+      <pubDate>Mon, 18 May 2026 00:00:00 GMT</pubDate>
+      <description>设备跑某条日志后随机硬复位，看门狗记录是「任务跑飞」。最后发现是 printf 在中断里把栈吃光了。一篇完整复盘给你避坑。</description>
+    </item>
+    <item>
+      <title>MQTT 3.1.1 还是 5.0？一篇文章讲清你该选哪个</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/mqtt5-vs-31</link>
+      <guid isPermaLink="false">pP1</guid>
+      <category>协议解析</category>
+      <pubDate>Sat, 30 May 2026 00:00:00 GMT</pubDate>
+      <description>设备侧没必要一窝蜂上 5.0，但网关和后端用 5.0 收益明显。这篇把三个真香特性和两个劝退点讲清，并给出分层建议。</description>
+    </item>
+    <item>
+      <title>用 ESP32-C3 做一个 9μA 的蓝牙信标（RISC-V 低功耗从0到1）</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/esp32c3-beacon</link>
+      <guid isPermaLink="false">pE3</guid>
+      <category>嵌入式实战</category>
+      <pubDate>Mon, 15 Jun 2026 00:00:00 GMT</pubDate>
+      <description>只想定时广播一个小信号、其他时间全睡？ESP32-C3 的 RISC-V 内核 + 轻量 RF，把平均电流做到 9μA。这篇从选型到代码讲透。</description>
+    </item>
+    <item>
+      <title>小白版 AWS IoT 设备影子：让断网的设备也能&#39;对得上账&#39;</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/aws-iot-shadow</link>
+      <guid isPermaLink="false">p3</guid>
+      <category>云边协同</category>
+      <pubDate>Tue, 30 Jun 2026 00:00:00 GMT</pubDate>
+      <description>设备离线时云端下了指令，重连后本地一上报就把指令覆盖掉了——这个经典竞态，用「设备影子」的 desired/reported 模型彻底解决。</description>
+    </item>
+    <item>
+      <title>LoRaWAN 组网踩坑：为什么你的节点总掉线（附排障清单）</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/lorawan-drop</link>
+      <guid isPermaLink="false">p2</guid>
+      <category>协议解析</category>
+      <pubDate>Sun, 12 Jul 2026 00:00:00 GMT</pubDate>
+      <description>节点前三天好好的，之后批量掉线、重加网也救不回来？多半不是信号差，而是 ADR 速率塌方、占空比超限、信道掩码错配。附完整排障清单。</description>
+    </item>
+    <item>
+      <title>ESP32 双核到底怎么用？一个让 Wi-Fi 不卡顿的实操</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/esp32-dualcore</link>
+      <guid isPermaLink="false">pE2</guid>
+      <category>嵌入式实战</category>
+      <pubDate>Tue, 21 Jul 2026 00:00:00 GMT</pubDate>
+      <description>ESP32 是双核，但默认把重活都丢给 Core 1，结果 Wi-Fi 吞吐掉一半。这篇讲清两个核怎么分工、应用代码该绑哪个。</description>
+    </item>
+    <item>
+      <title>STM32 + FreeRTOS 入门：用队列把传感器数据稳稳收上来（避坑版）</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/stm32-freertos-sensor</link>
+      <guid isPermaLink="false">pE1</guid>
+      <category>嵌入式实战</category>
+      <pubDate>Sun, 02 Aug 2026 00:00:00 GMT</pubDate>
+      <description>第一次用 RTOS 很容易把所有代码塞进中断里，结果系统跑两天就随机卡死。这篇用「中断只交数据、任务慢慢处理」的分层思路带你避开这个坑。</description>
+    </item>
+    <item>
+      <title>小白实战：用 ESP32 + MQTT 做一个超低功耗温湿度上报器（从零开始）</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/esp32-deepsleep-mqtt</link>
+      <guid isPermaLink="false">p1</guid>
+      <category>嵌入式实战</category>
+      <pubDate>Thu, 20 Aug 2026 00:00:00 GMT</pubDate>
+      <description>从装环境、接线、连 Wi-Fi、发 MQTT，到用深度睡眠把平均电流压到 18μA，一步一步带你做出一个能长期用电池跑的采集器。</description>
+    </item>
+    <item>
+      <title>把 RTSP 监控画面搬进网页：一条完整的低延迟链路</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/rtsp-to-webrtc-web-playback</link>
+      <guid isPermaLink="false">pA1</guid>
+      <category>视频影音</category>
+      <pubDate>Tue, 08 Sep 2026 00:00:00 GMT</pubDate>
+      <description>摄像头只给 RTSP，浏览器播放不了？go2rtc 一条链路搞定低延迟 WebRTC 播放。</description>
+    </item>
+    <item>
+      <title>AWS IoT Device Shadow：弱网环境下的状态同步实战</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/aws-iot-shadow-weak-network</link>
+      <guid isPermaLink="false">pSHDW</guid>
+      <category>云边协同</category>
+      <pubDate>Wed, 09 Sep 2026 00:00:00 GMT</pubDate>
+      <description>设备动辄断网几小时，App 打开却永远显示「最新状态」？Shadow 机制就是为此而生。</description>
+    </item>
+    <item>
+      <title>硬件可靠性设计：降额、热设计、防护电路</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/hardware-reliability-design</link>
+      <guid isPermaLink="false">hw-reliability</guid>
+      <category>硬件随笔</category>
+      <pubDate>Thu, 10 Sep 2026 00:00:00 GMT</pubDate>
+      <description>实验室能跑的产品和能卖的产品差在这三件事。这篇讲降额标准、热设计的计算方法、以及必加的防护电路清单。</description>
+    </item>
+    <item>
+      <title>Home Assistant + ESPHome：不写一行后端代码接入自研传感器</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/home-assistant-esphome-guide</link>
+      <guid isPermaLink="false">pS1</guid>
+      <category>智能家居</category>
+      <pubDate>Thu, 10 Sep 2026 00:00:00 GMT</pubDate>
+      <description>自研的 ESP32 传感器不想私有协议对接？ESPHome 让它 5 分钟变成 HA 的原生设备。</description>
+    </item>
+    <item>
+      <title>被忽视的一半：监控与会议里的音频采集与处理</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/audio-capture-processing</link>
+      <guid isPermaLink="false">av-audio</guid>
+      <category>视频影音</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>视频项目 90% 的音频问题：没声音、回声、噪声、不同步。这篇讲采样率与编码选择、常见故障定位，以及 WebRTC 的 3A 处理。</description>
+    </item>
+    <item>
+      <title>焊接与返修：从烙铁温度到 BGA 植球的实操要点</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/soldering-rework</link>
+      <guid isPermaLink="false">hw-solder</guid>
+      <category>硬件随笔</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>焊不好不是手抖，是温度、助焊剂、热容量没搞对。这篇讲温度设定、各类封装的焊接手法、常见缺陷判断，以及拆焊技巧。</description>
+    </item>
+    <item>
+      <title>监控录像存储规划：容量、检索与可靠性的实战方案</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/surveillance-storage</link>
+      <guid isPermaLink="false">av-storage</guid>
+      <category>视频影音</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>录像存多少天？硬盘怎么选？关键片段怎么秒级找到？这篇讲容量倒推计算、运动检测录制省 70% 空间，以及事件索引检索方案。</description>
+    </item>
+    <item>
+      <title>连接器与线缆选型：现场故障率最高的一环</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/connector-cable-selection</link>
+      <guid isPermaLink="false">hw-connector</guid>
+      <category>硬件随笔</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>设备本身没问题，坏的全是接插件。这篇讲连接器选型的关键参数（插拔次数、防护等级、端子镀层）、线缆选择与线序标准。</description>
+    </item>
+    <item>
+      <title>I2C 总线「抽风」排查记：上拉电阻与时钟拉伸的两个坑</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/i2c-pullup-clock-stretching-debug</link>
+      <guid isPermaLink="false">pI2CX</guid>
+      <category>踩坑记录</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>传感器读着读着就 NACK，逻辑分析仪抓了一晚上，最后竞是两个教科书级的基础问题。</description>
+    </item>
+    <item>
+      <title>Zigbee / Z-Wave / Thread / Matter 到底选哪个</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/smart-home-protocol-choice</link>
+      <guid isPermaLink="false">s-ha-protocol</guid>
+      <category>智能家居</category>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 GMT</pubDate>
+      <description>四种协议各有地盘。这篇用对比表讲清组网方式、频段干扰、生态现状，并给出按房间和按用途的选型建议。</description>
+    </item>
+    <item>
+      <title>本地语音助手：不联网也能听懂中文的 Home Assistant 方案</title>
+      <link>https://daimabiabia.github.io/yeshenyue-blog/#/post/ha-local-voice</link>
+      <guid isPermaLink="false">s-ha-voice</guid>
+      <category>智能家居</category>
+      <pubDate>Sat, 12 Sep 2026 00:00:00 GMT</pubDate>
+      <description>用 Wyoming + Whisper + Piper 搭一套完全本地的中文语音助手。这篇讲流水线架构、延迟优化到 1 秒内，以及中文识别的调参。</description>
+    </item>
+  </channel>
+</rss>
