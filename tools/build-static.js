@@ -41,6 +41,13 @@ fs.mkdirSync(path.join(OUT, 'data'), { recursive: true });
 console.log('[build] 拷贝 public/ → docs/');
 copyDir(PUB, OUT, (name, full) => name === 'admin.html' || (name === 'uploads' && fs.statSync(full).isDirectory()));
 
+/* live2d 模型清单重写：绝对路径 → 相对路径（Pages 子路径托管必需） */
+const waifuJson = path.join(OUT, 'js/live2d/waifu-tips.json');
+if (fs.existsSync(waifuJson)) {
+  fs.writeFileSync(waifuJson, fs.readFileSync(waifuJson, 'utf8').replace(/"\/js\/live2d\//g, '"js/live2d/'));
+  console.log('[build] waifu-tips.json 路径已相对化');
+}
+
 /* 数据快照 */
 const site = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/site.json'), 'utf8'));
 const posts = Array.isArray(site) ? site : (site.posts || []);

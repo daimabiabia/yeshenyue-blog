@@ -439,6 +439,15 @@
       '.sec-head .kicker', '.sec-head h2',
       '.md img',
     ].join(',');
+    const rescue = (el) => {
+      el.dataset.mfFail = '1';
+      delete el.dataset.mfSince;
+      gsap.to(el, {
+        autoAlpha: 1, y: 0, rotation: 0, clipPath: 'inset(0% 0% 0% 0%)',
+        duration: 0.3, overwrite: true,
+        clearProps: 'transform,opacity,visibility,clip-path',
+      });
+    };
     setInterval(() => {
       document.querySelectorAll(SEL).forEach((el) => {
         if (el.dataset.mfFail === '1') return;
@@ -447,14 +456,15 @@
         const cs = getComputedStyle(el);
         const hidden = parseFloat(cs.opacity) < 0.05 || cs.visibility === 'hidden';
         const clipped = /inset\([^)]*100%/.test(cs.clipPath || '');
-        if (!hidden && !clipped) return;
-        if (gsap.getTweensOf(el).some((t) => t.isActive())) return; /* 正在进场，别抢 */
-        el.dataset.mfFail = '1';
-        gsap.to(el, {
-          autoAlpha: 1, y: 0, rotation: 0, clipPath: 'inset(0% 0% 0% 0%)',
-          duration: 0.3, overwrite: true,
-          clearProps: 'transform,opacity,visibility,clip-path',
-        });
+        if (!hidden && !clipped) { delete el.dataset.mfSince; return; }
+        /* 双保险：正常路径 600ms 内无活跃补间即救；
+         * 若被等待态补间「占着位子」（batch 触发器失灵的僵持假象），
+         * 从首次发现隐藏起算 2.5s 后无条件强救——动效绝不能扣住内容。 */
+        const activeTween = gsap.getTweensOf(el).some((t) => t.isActive());
+        const since = +el.dataset.mfSince || 0;
+        if (!since) { el.dataset.mfSince = String(Date.now()); if (activeTween) return; }
+        else if (activeTween && Date.now() - since < 2500) return;
+        rescue(el);
       });
     }, 600);
   })();

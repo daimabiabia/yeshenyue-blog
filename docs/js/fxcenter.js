@@ -298,7 +298,7 @@
     if (!S.waifu) return;
     if (window.__waifuLoaded || window.__waifuLoading) return;
     window.__waifuLoading = true;
-    var base = '/js/live2d/';
+    var base = 'js/live2d/'; /* 相对路径：兼容 GitHub Pages 子路径托管（hash 路由不改 base） */
     var link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = base + 'waifu.css';
