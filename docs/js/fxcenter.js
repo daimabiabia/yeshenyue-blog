@@ -53,6 +53,42 @@
     }
   }
 
+  /* 自动性能降档：页面稳定后测 4s 帧率，低于 40fps 依次关 bg→crt→net，
+     每关一项重测；救回来就弹一次提示并记住（fxPerfAuto），不再重复打扰 */
+  (function autoPerf() {
+    if (S._perfDone || !window.requestAnimationFrame) return;
+    var HEAVY = [
+      ['bg', '🌌 背景动效'],
+      ['crt', '📺 CRT 扫描线'],
+      ['net', '🕸 拓扑粒子'],
+    ];
+    function persist() { try { localStorage.setItem('fxSettings', JSON.stringify(S)); } catch (e) {} }
+    function toast(msg) {
+      var t = document.createElement('div');
+      t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;padding:10px 18px;border-radius:10px;background:rgba(20,20,20,.88);color:#fff;font:13px/1.5 sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.25);transition:opacity .4s;';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(function () { t.style.opacity = '0'; }, 4200);
+      setTimeout(function () { t.remove(); }, 4800);
+    }
+    function sample(round) {
+      var frames = 0, t0 = performance.now();
+      (function loop() {
+        frames++;
+        var used = performance.now() - t0;
+        if (used < 4000) { requestAnimationFrame(loop); return; }
+        var fps = frames / used * 1000;
+        if (fps >= 40) { S._perfDone = 1; persist(); return; }   /* 帧率健康，收工 */
+        var next = HEAVY.filter(function (h) { return S[h[0]]; })[0];
+        if (!next) { S._perfDone = 1; persist(); return; }        /* 重特效全关了，认命 */
+        FXS.set(next[0], 0);
+        toast('检测到卡顿（' + Math.round(fps) + ' fps），已自动关闭「' + next[1] + '」，可在 ⚙ 特效中心重新打开');
+        setTimeout(function () { sample(round + 1); }, 1200);  /* 等生效后重测 */
+      })();
+    }
+    setTimeout(function () { if (!document.hidden) sample(0); else S._perfDone = 1; }, 3500);
+  })();
+
   window.FXS = {
     get: function (k) { return !!S[k]; },
     set: function (k, v) {

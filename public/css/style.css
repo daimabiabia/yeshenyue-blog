@@ -359,9 +359,8 @@ p:last-child { margin-bottom: 0; }
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--s3);
   padding: 11px 22px;
-  background: color-mix(in srgb, var(--page) 88%, transparent);
-  backdrop-filter: saturate(150%) blur(10px);
-  -webkit-backdrop-filter: saturate(150%) blur(10px);
+  /* 性能：backdrop-filter 毛玻璃悬在动画背景上=每帧全宽重模糊，改为高不透明度实底 */
+  background: color-mix(in srgb, var(--page) 95%, transparent);
   border-bottom: var(--bw) solid var(--line);
   transition: padding var(--t) var(--ease), box-shadow var(--t) var(--ease);
 }
@@ -1733,7 +1732,8 @@ p:last-child { margin-bottom: 0; }
 }
 @keyframes caret-blink { to { visibility: hidden; } }
 
-/* ---- 21.8 深色主题：CRT 扫描线 + 荧光数字 ---- */
+/* ---- 21.8 深色主题：CRT 扫描线 + 荧光数字
+      性能：mix-blend-mode: overlay 会让每帧全屏重混合，已移除（视觉差异 <2%） ---- */
 [data-theme="dark"] body::after {
   content: ''; position: fixed; inset: 0; z-index: 999;
   pointer-events: none;
@@ -1744,7 +1744,6 @@ p:last-child { margin-bottom: 0; }
     transparent 1px,
     transparent 3px
   );
-  mix-blend-mode: overlay;
 }
 [data-theme="dark"] .num,
 [data-theme="dark"] .hot-rank,
@@ -2064,18 +2063,17 @@ p:last-child { margin-bottom: 0; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cg fill='none' stroke='rgba(196,255,61,0.06)' stroke-width='1.6'%3E%3Cpath d='M30 40h120a14 14 0 0 1 14 14v92a14 14 0 0 0 14 14h100'/%3E%3Cpath d='M30 80h84a10 10 0 0 1 10 10v120a10 10 0 0 0 10 10h150'/%3E%3Cpath d='M390 120v110a14 14 0 0 1-14 14h-96'/%3E%3Cpath d='M360 390V272a12 12 0 0 0-12-12h-84'/%3E%3Cpath d='M60 390v-96a12 12 0 0 1 12-12h70'/%3E%3Cpath d='M230 40v70a12 12 0 0 0 12 12h60a12 12 0 0 1 12 12v40'/%3E%3C/g%3E%3Cg fill='rgba(196,255,61,0.09)'%3E%3Ccircle cx='30' cy='40' r='4.5'/%3E%3Ccircle cx='30' cy='80' r='4.5'/%3E%3Ccircle cx='278' cy='160' r='4.5'/%3E%3Ccircle cx='390' cy='120' r='4.5'/%3E%3Ccircle cx='264' cy='260' r='4.5'/%3E%3Ccircle cx='360' cy='390' r='4.5'/%3E%3Ccircle cx='60' cy='390' r='4.5'/%3E%3Ccircle cx='314' cy='174' r='4.5'/%3E%3Ccircle cx='142' cy='282' r='4.5'/%3E%3Ccircle cx='230' cy='40' r='4.5'/%3E%3C/g%3E%3C/svg%3E");
 }
 
-/* -- 26.2 极光色斑：超大 radial 光团缓慢漂移（60~110s 往返） -- */
+/* -- 26.2 极光色斑：超大 radial 光团缓慢漂移（60~110s 往返）
+      性能：禁用 mix-blend-mode/filter（全屏逐帧重混合是低端机掉帧主因），
+      用透明度补偿观感；纯 transform 合成器动画，不再触碰主线程 -- */
 #backdrop .bd-blob {
   position: absolute; display: block; border-radius: 50%;
-  filter: blur(2px);
-  mix-blend-mode: multiply;         /* 浅色主题：像水彩洇进纸里 */
-  opacity: .16;
+  opacity: .3;
   animation: bd-drift var(--bd-dur, 90s) ease-in-out infinite alternate;
   will-change: transform;
 }
 [data-theme="dark"] #backdrop .bd-blob {
-  mix-blend-mode: screen;           /* 深色主题：霓虹辉光 */
-  opacity: .1;
+  opacity: .18;
 }
 #backdrop .bd-b1 { background: radial-gradient(circle at 40% 40%, rgba(255,46,136,.5), transparent 62%); --bd-dur: 74s; }
 #backdrop .bd-b2 { background: radial-gradient(circle at 55% 45%, rgba(0,163,255,.42), transparent 60%); --bd-dur: 96s; }
