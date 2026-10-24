@@ -79,11 +79,13 @@
         if (used < 4000) { requestAnimationFrame(loop); return; }
         var fps = frames / used * 1000;
         if (fps >= 40) { S._perfDone = 1; persist(); return; }   /* 帧率健康，收工 */
+        /* 连续两个窗口都低帧才降档：避免加载抖动误杀 */
+        if (round === 0) { setTimeout(function () { sample(1); }, 1500); return; }
         var next = HEAVY.filter(function (h) { return S[h[0]]; })[0];
         if (!next) { S._perfDone = 1; persist(); return; }        /* 重特效全关了，认命 */
         FXS.set(next[0], 0);
         toast('检测到卡顿（' + Math.round(fps) + ' fps），已自动关闭「' + next[1] + '」，可在 ⚙ 特效中心重新打开');
-        setTimeout(function () { sample(round + 1); }, 1200);  /* 等生效后重测 */
+        setTimeout(function () { sample(2); }, 1200);              /* 等生效后重测 */
       })();
     }
     setTimeout(function () { if (!document.hidden) sample(0); else S._perfDone = 1; }, 3500);
