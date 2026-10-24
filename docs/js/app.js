@@ -44,6 +44,8 @@
   const FOOT_KEY = 'ysy_footprints';
   const LIKE_KEY = 'ysy_liked_ids';
   const STAR_KEY = 'ysy_stars';
+  /* 静态模式按篇正文缓存（data/posts/<id>.json），会话内只拉一次 */
+  const POST_CACHE = {};
   /* 预计阅读时长：列表接口的元数据带 readMin（服务端预计算）；
    * 静态模式 / 文章全量数据没有 readMin 时回退到本地按正文估算 */
   const readMinOf = (p) => p.readMin || readingTime(p.content);
@@ -1366,11 +1368,18 @@
     const key = decodeURIComponent(id || '');
     const meta = DATA.posts.find((x) => x.id === key) || DATA.posts.find((x) => x.slug === key);
     if (!meta) { location.hash = '#/'; return; }
-    /* 列表接口不含正文：单独拉全量（含 content）；失败时降级用元数据（无正文仅提示） */
+    /* 列表接口/静态索引不含正文：单独拉全量（含 content）；失败时降级用元数据（无正文仅提示）。
+     * 静态模式按篇拉 data/posts/<id>.json（首次后内存缓存）；本地服务器走 /api/post/:id */
     let p = meta;
     try {
-      const r = await fetch('/api/post/' + encodeURIComponent(meta.id));
-      if (r.ok) { const j = await r.json(); if (j.post) p = j.post; }
+      if (window.IS_STATIC_BLOG && POST_CACHE[meta.id]) {
+        p = POST_CACHE[meta.id];
+      } else {
+        const r = await fetch(window.IS_STATIC_BLOG
+          ? 'data/posts/' + encodeURIComponent(meta.id) + '.json'
+          : '/api/post/' + encodeURIComponent(meta.id));
+        if (r.ok) { const j = await r.json(); p = j.post || j; if (window.IS_STATIC_BLOG) POST_CACHE[meta.id] = p; }
+      }
     } catch (e) {}
     const lv = levelInfo(p.level);
     const rt = readingTime(p.content);
@@ -1825,7 +1834,12 @@
     $('#themeBtn').addEventListener('click', toggleTheme);
     try {
       let r = await fetch('/api/site').catch(() => null);
-      if (!r || !r.ok) { r = await fetch('data/site.json'); window.IS_STATIC_BLOG = true; } /* 相对路径：兼容 GitHub Pages 子路径托管 */
+      if (!r || !r.ok) {
+        /* 静态托管：优先轻量索引（无正文，首屏体积 911KB→~90KB）；旧版全量 site.json 兜底 */
+        r = await fetch('data/index.json').catch(() => null);
+        if (!r || !r.ok) r = await fetch('data/site.json').catch(() => null);
+        window.IS_STATIC_BLOG = true;
+      } /* 相对路径：兼容 GitHub Pages 子路径托管 */
       if (!r || !r.ok) throw new Error('no site data');
       DATA = await r.json();
     } catch (e) {
@@ -1979,8 +1993,12 @@
       sb.addEventListener('click', syncSfxBtn);
     }
     if (window.FX && FX.ready) FX.tilt();
-    /* 看板娘：开关打开则加载；运行中切换开关即时显隐 */
-    if (window.FXS && window.FXS.get('waifu')) window.FXS.loadWaifu();
+    /* 看板娘：等页面 load 完再空闲加载（~1.4MB 模型不抢首屏带宽），手机窄屏不加载 */
+    if (window.FXS && window.FXS.get('waifu') && matchMedia('(min-width: 900px)').matches) {
+      const idle = window.requestIdleCallback || ((f) => setTimeout(f, 2000));
+      if (document.readyState === 'complete') setTimeout(() => idle(() => window.FXS.loadWaifu(), { timeout: 10000 }), 2500);
+      else window.addEventListener('load', () => setTimeout(() => idle(() => window.FXS.loadWaifu(), { timeout: 10000 }), 2500));
+    }
     document.addEventListener('fxchange', function (e) {
       if (e.detail && e.detail.key === 'waifu' && e.detail.on) window.FXS.loadWaifu();
     });

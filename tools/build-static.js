@@ -54,6 +54,21 @@ const posts = Array.isArray(site) ? site : (site.posts || []);
 const outSite = Array.isArray(site) ? { posts: site } : site;
 fs.writeFileSync(path.join(OUT, 'data/site.json'), JSON.stringify(outSite));
 
+/* 轻量索引 + 单篇正文：首屏只拉 index.json（无正文 ~90KB），点进文章再按篇拉 posts/<id>.json */
+const readingChars = (s) => (s || '').replace(/\s/g, '').length;
+const indexPosts = posts.map((p) => {
+  const { content, ...meta } = p;
+  if (!meta.readMin) meta.readMin = Math.max(1, Math.round(readingChars(content) / 350));
+  return meta;
+});
+fs.writeFileSync(path.join(OUT, 'data/index.json'), JSON.stringify({ site: site.site || {}, posts: indexPosts }));
+const postsDir = path.join(OUT, 'data/posts');
+fs.mkdirSync(postsDir, { recursive: true });
+for (const p of posts) {
+  fs.writeFileSync(path.join(postsDir, p.id + '.json'), JSON.stringify(p));
+  if (p.slug && p.slug !== p.id) fs.writeFileSync(path.join(postsDir, p.slug + '.json'), JSON.stringify(p));
+}
+
 let likes = {};
 try { likes = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/likes.json'), 'utf8')); } catch (e) {}
 /* likes.json 存的是 {id:count} 本体还是 {likes:{...}} 都兼容 */
@@ -112,5 +127,6 @@ fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 const du = (p) => { let n = 0; try { n = fs.statSync(p).size; } catch (e) {} return n; };
 console.log('[build] 完成 → docs/');
 console.log('  文章数:', posts.length);
-console.log('  site.json:', (du(path.join(OUT, 'data/site.json')) / 1024).toFixed(0) + ' KB');
+console.log('  site.json:', (du(path.join(OUT, 'data/site.json')) / 1024).toFixed(0) + ' KB（兜底）');
+console.log('  index.json:', (du(path.join(OUT, 'data/index.json')) / 1024).toFixed(0) + ' KB（首屏） / 单篇', fs.readdirSync(postsDir).length, '个文件');
 console.log('  likes:', Object.keys(likesMap).length, '条 / comments 文章:', Object.keys(comments).length, '篇 / wall:', notes.length, '张便签');
